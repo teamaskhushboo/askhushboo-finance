@@ -20,6 +20,7 @@ import {
   getSettings,
   saveSettings,
   seedInitialData,
+  forceReseedExpenses,
   onExpensesChange,
   onRevenueChange,
 } from "@/lib/storage";
@@ -49,10 +50,28 @@ export default function Home() {
 
     const init = async () => {
       try {
-        // Seed initial data if needed (only if Firestore is empty)
+        // Load settings from localStorage FIRST (instant, guaranteed to work)
+        try {
+          const lsSettings = localStorage.getItem("askhushboo_settings");
+          if (lsSettings) {
+            const parsed = JSON.parse(lsSettings);
+            setSettings({
+              id: "main",
+              aiApiKey: parsed.aiApiKey || "",
+              aiProvider: parsed.aiProvider || "groq",
+              aiModelName: parsed.aiModelName || "llama-3.3-70b-versatile",
+              aiCustomEndpoint: parsed.aiCustomEndpoint || "",
+              updatedAt: parsed.updatedAt || null,
+            });
+          }
+        } catch (e) {
+          console.warn("Could not load settings from localStorage:", e);
+        }
+
+        // Seed initial data if needed (handles Firebase + localStorage)
         await seedInitialData();
 
-        // Load initial data
+        // Load initial data (falls back to localStorage if Firebase unavailable)
         const [expensesData, revenueData, settingsData] = await Promise.all([
           getExpenses(),
           getRevenue(),
@@ -61,11 +80,14 @@ export default function Home() {
 
         setExpenses(expensesData);
         setRevenue(revenueData);
-        setSettings(settingsData);
-        setIsFirebaseConnected(true);
+        // Only overwrite settings if Firebase returned actual data (not defaults)
+        if (settingsData.aiApiKey || settingsData.updatedAt) {
+          setSettings(settingsData);
+        }
+        setIsFirebaseConnected(true); // True = data is loaded (from either source)
         setIsHydrated(true);
 
-        // Set up real-time listeners
+        // Set up real-time listeners (auto-falls back to localStorage polling)
         unsubscribeExpenses = onExpensesChange((updatedExpenses) => {
           setExpenses(updatedExpenses);
         });
@@ -103,6 +125,11 @@ export default function Home() {
     await deleteExpenseFirestore(id);
   }, []);
 
+  // Restore pre-loaded expenses (39 items, Rs 189,530)
+  const handleRestoreExpenses = useCallback(async () => {
+    return await forceReseedExpenses();
+  }, []);
+
   // Revenue CRUD
   const handleAddRevenue = useCallback(async (rev: Revenue) => {
     const newRevenue = await addRevenueFirestore(rev);
@@ -135,6 +162,7 @@ export default function Home() {
             onAdd={handleAddExpense}
             onUpdate={handleUpdateExpense}
             onDelete={handleDeleteExpense}
+            onRestore={handleRestoreExpenses}
           />
         );
       case "revenue":

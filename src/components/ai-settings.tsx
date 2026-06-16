@@ -99,31 +99,54 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
     setIsSaving(true);
 
     try {
-      const response = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          aiApiKey: apiKey,
-          aiProvider: provider,
-          aiModelName: modelName,
-          aiCustomEndpoint: customEndpoint,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to save");
-
-      const updatedSettings: AppSettings = {
+      // ALWAYS save to localStorage first (guaranteed to work)
+      const lsSettings: AppSettings = {
         id: "main",
         aiApiKey: apiKey,
         aiProvider: provider as AppSettings["aiProvider"],
         aiModelName: modelName,
         aiCustomEndpoint: customEndpoint,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       };
+      try {
+        localStorage.setItem("askhushboo_settings", JSON.stringify(lsSettings));
+      } catch (lsErr) {
+        console.error("LocalStorage save failed:", lsErr);
+      }
 
-      onSettingsChange(updatedSettings);
-      toast.success("AI settings saved successfully! 💛");
-    } catch {
+      // Try to also save to Firebase (cloud sync)
+      let firebaseConnected = false;
+      try {
+        const response = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            aiApiKey: apiKey,
+            aiProvider: provider,
+            aiModelName: modelName,
+            aiCustomEndpoint: customEndpoint,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          firebaseConnected = data.firebaseConnected === true;
+          if (firebaseConnected) {
+            toast.success("Settings saved to cloud! 💛");
+          } else {
+            toast.success("Settings saved locally. Firebase cloud sync unavailable (see console for fix).");
+          }
+        } else {
+          toast.success("Settings saved locally (offline mode).");
+        }
+      } catch (fetchErr) {
+        console.warn("Firebase save failed, but localStorage saved:", fetchErr);
+        toast.success("Settings saved locally. Cloud sync will work once Firebase rules are fixed.");
+      }
+
+      onSettingsChange(lsSettings);
+    } catch (error) {
+      console.error("Save settings error:", error);
       toast.error("Failed to save settings. Try again.");
     } finally {
       setIsSaving(false);

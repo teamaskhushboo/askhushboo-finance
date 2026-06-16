@@ -40,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, Edit2, Trash2, Sparkles, Loader2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Sparkles, Loader2, RotateCcw } from "lucide-react";
 import {
   Expense,
   ExpenseCategory,
@@ -58,6 +58,7 @@ interface ExpenseManagerProps {
   onAdd: (expense: Expense) => Promise<Expense>;
   onUpdate: (expense: Expense) => Promise<Expense>;
   onDelete: (id: string) => Promise<void>;
+  onRestore?: () => Promise<number>;
 }
 
 export default function ExpenseManager({
@@ -65,6 +66,7 @@ export default function ExpenseManager({
   onAdd,
   onUpdate,
   onDelete,
+  onRestore,
 }: ExpenseManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -72,6 +74,7 @@ export default function ExpenseManager({
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // Form state
   const [formDate, setFormDate] = useState(
@@ -201,13 +204,40 @@ export default function ExpenseManager({
             Track all your business expenses 💛
           </p>
         </div>
-        <Button
-          onClick={openAddDialog}
-          className="bg-gold hover:bg-gold-dark text-black font-semibold gap-2"
-        >
-          <Plus size={18} />
-          Add Expense
-        </Button>
+        <div className="flex gap-2">
+          {onRestore && (
+            <Button
+              onClick={async () => {
+                if (!confirm("Yeh aapke 39 pre-loaded expenses (Rs 189,530) wapas restore kar dega. Existing expenses reh jayenge. Continue?")) return;
+                setIsRestoring(true);
+                try {
+                  const count = await onRestore();
+                  toast.success(`${count} pre-loaded expenses restore ho gaye! 💛`);
+                } catch (e) {
+                  toast.error("Restore failed. Try again.");
+                  console.error(e);
+                } finally {
+                  setIsRestoring(false);
+                }
+              }}
+              disabled={isRestoring}
+              variant="outline"
+              className="border-gold/30 text-gold hover:bg-gold/10 gap-2"
+              title="Restore 39 pre-loaded expenses (Rs 189,530)"
+            >
+              {isRestoring ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+              <span className="hidden sm:inline">Restore Pre-loaded</span>
+              <span className="sm:hidden">Restore</span>
+            </Button>
+          )}
+          <Button
+            onClick={openAddDialog}
+            className="bg-gold hover:bg-gold-dark text-black font-semibold gap-2"
+          >
+            <Plus size={18} />
+            Add Expense
+          </Button>
+        </div>
       </div>
 
       {/* Search and filter */}
