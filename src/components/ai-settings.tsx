@@ -114,7 +114,7 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
         console.error("LocalStorage save failed:", lsErr);
       }
 
-      // Try to also save to Firebase (cloud sync)
+      // Try to also save to Firebase (cloud sync via Admin SDK)
       let firebaseConnected = false;
       try {
         const response = await fetch("/api/settings", {
@@ -128,20 +128,24 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
           }),
         });
 
-        if (response.ok) {
-          const data = await response.json();
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok && data.success !== false) {
           firebaseConnected = data.firebaseConnected === true;
           if (firebaseConnected) {
-            toast.success("Settings saved to cloud! 💛");
+            toast.success("Settings saved to cloud (secure)! 💛");
           } else {
-            toast.success("Settings saved locally. Firebase cloud sync unavailable (see console for fix).");
+            toast.success("Settings saved locally. Cloud sync needs Firebase Admin env vars.");
           }
+        } else if (response.status === 503 || data.needsConfig) {
+          // Server is up but Firebase Admin SDK env vars are missing
+          toast.error("Settings saved locally only. Developer needs to set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars in Vercel.");
         } else {
-          toast.success("Settings saved locally (offline mode).");
+          toast.error(data.error || `Save failed (${response.status}). Settings saved locally only.`);
         }
       } catch (fetchErr) {
-        console.warn("Firebase save failed, but localStorage saved:", fetchErr);
-        toast.success("Settings saved locally. Cloud sync will work once Firebase rules are fixed.");
+        console.warn("Cloud save failed, but localStorage saved:", fetchErr);
+        toast.success("Settings saved locally. Cloud sync will work once Firebase Admin env vars are set.");
       }
 
       onSettingsChange(lsSettings);

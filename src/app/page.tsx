@@ -7,6 +7,7 @@ import ExpenseManager from "@/components/expense-manager";
 import RevenueManager from "@/components/revenue-manager";
 import AIAssistant from "@/components/ai-assistant";
 import InsightsPanel from "@/components/insights-panel";
+import AuthGate from "@/components/auth-gate";
 import { ActiveTab, Expense, Revenue, AppSettings } from "@/lib/types";
 import {
   getExpenses,
@@ -199,19 +200,22 @@ export default function Home() {
   // Show loading while hydrating
   if (!isHydrated) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-4">💛</div>
-          <h1 className="text-2xl font-bold text-gold mb-2">#AS KHUSHBOO</h1>
-          <p className="text-muted-foreground text-sm">
-            Connecting to Firebase...
-          </p>
+      <AuthGate>
+        <div className="min-h-screen bg-black flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-pulse">💛</div>
+            <h1 className="text-2xl font-bold text-gold mb-2">#AS KHUSHBOO</h1>
+            <p className="text-muted-foreground text-sm">
+              Loading your finance data...
+            </p>
+          </div>
         </div>
-      </div>
+      </AuthGate>
     );
   }
 
   return (
+    <AuthGate>
     <div className="min-h-screen bg-black flex">
       {/* Sidebar */}
       <Sidebar
@@ -267,5 +271,6 @@ export default function Home() {
       {/* Bottom navigation (mobile) */}
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
+    </AuthGate>
   );
 }

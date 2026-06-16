@@ -1,34 +1,14 @@
-import {
-  db,
-  collection,
-  doc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  setDoc,
-  getDoc,
-  serverTimestamp,
-} from "./firebase";
 import { Expense, Revenue, AppSettings } from "./types";
 import { PRELOADED_EXPENSES } from "./data";
 
-const EXPENSES_COLLECTION = "finance_expenses";
-const REVENUE_COLLECTION = "finance_revenue";
-const SETTINGS_DOC = "main";
-const SETTINGS_COLLECTION = "finance_settings";
-
-// LocalStorage keys (fallback when Firebase is unavailable)
+// LocalStorage keys (fallback when server-side Firebase is unavailable)
 const LS_EXPENSES_KEY = "askhushboo_expenses";
 const LS_REVENUE_KEY = "askhushboo_revenue";
 const LS_SETTINGS_KEY = "askhushboo_settings";
-const LS_SEEDED_KEY = "askhushboo_seeded_v1";
+const LS_SEEDED_KEY = "askhushboo_seeded_v2";
 
-// Track Firebase availability globally
-let firebaseAvailable: boolean | null = null;
+// Track server availability globally
+let serverAvailable: boolean | null = null;
 
 // ========== LocalStorage helpers ==========
 
@@ -52,17 +32,15 @@ function writeLS<T>(key: string, value: T): void {
   }
 }
 
-// Test if Firebase is reachable (single time check)
-export async function checkFirebaseAvailability(): Promise<boolean> {
-  if (firebaseAvailable !== null) return firebaseAvailable;
+// Test if server-side API is reachable (single time check)
+export async function checkServerAvailability(): Promise<boolean> {
+  if (serverAvailable !== null) return serverAvailable;
   try {
-    // Try a simple read operation
-    await getDocs(collection(db, EXPENSES_COLLECTION));
-    firebaseAvailable = true;
-    return true;
-  } catch (e) {
-    console.warn("[Storage] Firebase unavailable, using localStorage fallback:", e instanceof Error ? e.message : String(e));
-    firebaseAvailable = false;
+    const res = await fetch("/api/health", { method: "GET" });
+    serverAvailable = res.ok;
+    return serverAvailable;
+  } catch {
+    serverAvailable = false;
     return false;
   }
 }
@@ -70,21 +48,24 @@ export async function checkFirebaseAvailability(): Promise<boolean> {
 // ========== Expenses ==========
 
 export async function getExpenses(): Promise<Expense[]> {
-  // Try Firebase first
-  if (firebaseAvailable !== false) {
-    try {
-      const q = query(collection(db, EXPENSES_COLLECTION), orderBy("date", "desc"));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        firebaseAvailable = true;
-        return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Expense));
+  // Try server first
+  try {
+    const res = await fetch("/api/expenses", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.expenses && Array.isArray(data.expenses)) {
+        serverAvailable = true;
+        return data.expenses as Expense[];
       }
-      // Empty Firestore - might be locked or genuinely empty
-      // Fall through to localStorage
-    } catch (e) {
-      console.warn("[Storage] Firebase read failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
     }
+    // 503 means server is up but Firebase env vars not set
+    if (res.status === 503) {
+      serverAvailable = false;
+      console.warn("[Storage] Server Firebase not configured, using localStorage");
+    }
+  } catch (e) {
+    console.warn("[Storage] Server fetch failed, using localStorage:", e instanceof Error ? e.message : String(e));
+    serverAvailable = false;
   }
 
   // Fallback: localStorage
@@ -104,19 +85,23 @@ export async function getExpenses(): Promise<Expense[]> {
 }
 
 export async function addExpense(expense: Expense): Promise<Expense> {
-  // Try Firebase first
-  if (firebaseAvailable !== false) {
+  // Try server first
+  if (serverAvailable !== false) {
     try {
-      const { id, ...data } = expense;
-      const docRef = await addDoc(collection(db, EXPENSES_COLLECTION), {
-        ...data,
-        createdAt: serverTimestamp(),
+      const res = await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expense }),
       });
-      firebaseAvailable = true;
-      return { ...expense, id: docRef.id };
+      if (res.ok) {
+        const data = await res.json();
+        serverAvailable = true;
+        return data.expense as Expense;
+      }
+      if (res.status === 503) serverAvailable = false;
     } catch (e) {
-      console.warn("[Storage] Firebase write failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+      console.warn("[Storage] Server add failed, using localStorage:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
     }
   }
 
@@ -128,17 +113,21 @@ export async function addExpense(expense: Expense): Promise<Expense> {
 }
 
 export async function updateExpense(expense: Expense): Promise<Expense> {
-  // Try Firebase first
-  if (firebaseAvailable !== false) {
+  if (serverAvailable !== false) {
     try {
-      const { id, ...data } = expense;
-      const docRef = doc(db, EXPENSES_COLLECTION, id);
-      await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() });
-      firebaseAvailable = true;
-      return expense;
+      const res = await fetch(`/api/expenses/${expense.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expense }),
+      });
+      if (res.ok) {
+        serverAvailable = true;
+        return expense;
+      }
+      if (res.status === 503) serverAvailable = false;
     } catch (e) {
-      console.warn("[Storage] Firebase update failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+      console.warn("[Storage] Server update failed, using localStorage:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
     }
   }
 
@@ -153,16 +142,17 @@ export async function updateExpense(expense: Expense): Promise<Expense> {
 }
 
 export async function deleteExpense(id: string): Promise<void> {
-  // Try Firebase first
-  if (firebaseAvailable !== false) {
+  if (serverAvailable !== false) {
     try {
-      const docRef = doc(db, EXPENSES_COLLECTION, id);
-      await deleteDoc(docRef);
-      firebaseAvailable = true;
-      return;
+      const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        serverAvailable = true;
+        return;
+      }
+      if (res.status === 503) serverAvailable = false;
     } catch (e) {
-      console.warn("[Storage] Firebase delete failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+      console.warn("[Storage] Server delete failed, using localStorage:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
     }
   }
 
@@ -174,36 +164,41 @@ export async function deleteExpense(id: string): Promise<void> {
 // ========== Revenue ==========
 
 export async function getRevenue(): Promise<Revenue[]> {
-  if (firebaseAvailable !== false) {
-    try {
-      const q = query(collection(db, REVENUE_COLLECTION), orderBy("date", "desc"));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        firebaseAvailable = true;
-        return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Revenue));
+  try {
+    const res = await fetch("/api/revenue", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.revenue && Array.isArray(data.revenue)) {
+        serverAvailable = true;
+        return data.revenue as Revenue[];
       }
-    } catch (e) {
-      console.warn("[Storage] Firebase read failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
     }
+    if (res.status === 503) serverAvailable = false;
+  } catch (e) {
+    console.warn("[Storage] Server fetch failed, using localStorage:", e instanceof Error ? e.message : String(e));
+    serverAvailable = false;
   }
 
   return readLS<Revenue[]>(LS_REVENUE_KEY, []).sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
 export async function addRevenue(revenue: Revenue): Promise<Revenue> {
-  if (firebaseAvailable !== false) {
+  if (serverAvailable !== false) {
     try {
-      const { id, ...data } = revenue;
-      const docRef = await addDoc(collection(db, REVENUE_COLLECTION), {
-        ...data,
-        createdAt: serverTimestamp(),
+      const res = await fetch("/api/revenue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revenue }),
       });
-      firebaseAvailable = true;
-      return { ...revenue, id: docRef.id };
+      if (res.ok) {
+        const data = await res.json();
+        serverAvailable = true;
+        return data.revenue as Revenue;
+      }
+      if (res.status === 503) serverAvailable = false;
     } catch (e) {
-      console.warn("[Storage] Firebase write failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+      console.warn("[Storage] Server add failed, using localStorage:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
     }
   }
 
@@ -214,16 +209,21 @@ export async function addRevenue(revenue: Revenue): Promise<Revenue> {
 }
 
 export async function updateRevenue(revenue: Revenue): Promise<Revenue> {
-  if (firebaseAvailable !== false) {
+  if (serverAvailable !== false) {
     try {
-      const { id, ...data } = revenue;
-      const docRef = doc(db, REVENUE_COLLECTION, id);
-      await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() });
-      firebaseAvailable = true;
-      return revenue;
+      const res = await fetch(`/api/revenue/${revenue.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revenue }),
+      });
+      if (res.ok) {
+        serverAvailable = true;
+        return revenue;
+      }
+      if (res.status === 503) serverAvailable = false;
     } catch (e) {
-      console.warn("[Storage] Firebase update failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+      console.warn("[Storage] Server update failed, using localStorage:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
     }
   }
 
@@ -237,15 +237,17 @@ export async function updateRevenue(revenue: Revenue): Promise<Revenue> {
 }
 
 export async function deleteRevenue(id: string): Promise<void> {
-  if (firebaseAvailable !== false) {
+  if (serverAvailable !== false) {
     try {
-      const docRef = doc(db, REVENUE_COLLECTION, id);
-      await deleteDoc(docRef);
-      firebaseAvailable = true;
-      return;
+      const res = await fetch(`/api/revenue/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        serverAvailable = true;
+        return;
+      }
+      if (res.status === 503) serverAvailable = false;
     } catch (e) {
-      console.warn("[Storage] Firebase delete failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+      console.warn("[Storage] Server delete failed, using localStorage:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
     }
   }
 
@@ -256,26 +258,30 @@ export async function deleteRevenue(id: string): Promise<void> {
 // ========== Settings ==========
 
 export async function getSettings(): Promise<AppSettings> {
-  if (firebaseAvailable !== false) {
-    try {
-      const docRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC);
-      const snapshot = await getDoc(docRef);
-      if (snapshot.exists()) {
-        firebaseAvailable = true;
-        return { id: snapshot.id, ...snapshot.data() } as AppSettings;
-      }
-      // If Firestore is reachable but doc doesn't exist, return defaults (will save later)
-      firebaseAvailable = true;
-    } catch (e) {
-      console.warn("[Storage] Firebase settings read failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+  try {
+    const res = await fetch("/api/settings", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      serverAvailable = true;
+      return {
+        id: data.id || "main",
+        aiApiKey: data.aiApiKey || "",
+        aiProvider: data.aiProvider || "groq",
+        aiModelName: data.aiModelName || "llama-3.3-70b-versatile",
+        aiCustomEndpoint: data.aiCustomEndpoint || "",
+        updatedAt: data.updatedAt || null,
+      };
     }
+    if (res.status === 503) serverAvailable = false;
+  } catch (e) {
+    console.warn("[Storage] Server settings fetch failed, using localStorage:", e instanceof Error ? e.message : String(e));
+    serverAvailable = false;
   }
 
   // Fallback: localStorage
   const lsSettings = readLS<Partial<AppSettings>>(LS_SETTINGS_KEY, {});
   return {
-    id: SETTINGS_DOC,
+    id: "main",
     aiApiKey: lsSettings.aiApiKey || "",
     aiProvider: (lsSettings.aiProvider as AppSettings["aiProvider"]) || "groq",
     aiModelName: lsSettings.aiModelName || "llama-3.3-70b-versatile",
@@ -284,51 +290,62 @@ export async function getSettings(): Promise<AppSettings> {
   };
 }
 
-export async function saveSettings(settings: AppSettings): Promise<void> {
+export async function saveSettings(settings: AppSettings): Promise<{ success: boolean; firebaseConnected: boolean; error?: string }> {
   // Always save to localStorage (works offline)
   writeLS(LS_SETTINGS_KEY, settings);
 
-  // Try to also save to Firebase
-  if (firebaseAvailable !== false) {
+  // Try to save to server
+  if (serverAvailable !== false) {
     try {
-      const docRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC);
-      const { id, ...data } = settings;
-      await setDoc(docRef, { ...data, updatedAt: serverTimestamp() }, { merge: true });
-      firebaseAvailable = true;
-      return;
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aiApiKey: settings.aiApiKey,
+          aiProvider: settings.aiProvider,
+          aiModelName: settings.aiModelName,
+          aiCustomEndpoint: settings.aiCustomEndpoint,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        serverAvailable = true;
+        return { success: true, firebaseConnected: data.firebaseConnected ?? true };
+      }
+      const errData = await res.json().catch(() => ({}));
+      if (res.status === 503) serverAvailable = false;
+      return {
+        success: false,
+        firebaseConnected: false,
+        error: errData.error || `Server returned ${res.status}`,
+      };
     } catch (e) {
-      console.warn("[Storage] Firebase settings save failed, using localStorage only:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
-      // Don't throw - localStorage already saved
-      return;
+      console.warn("[Storage] Server settings save failed, using localStorage only:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
+      return {
+        success: false,
+        firebaseConnected: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
   }
+
+  return { success: true, firebaseConnected: false };
 }
 
 // ========== Seed Data ==========
 
 export async function seedInitialData(): Promise<void> {
-  // Check if Firebase is available first
-  await checkFirebaseAvailability();
+  await checkServerAvailability();
 
-  if (firebaseAvailable === true) {
-    // Firebase path - check if Firestore has data
+  if (serverAvailable === true) {
+    // Server path - request with seed=true so server seeds Firestore if empty
     try {
-      const snapshot = await getDocs(collection(db, EXPENSES_COLLECTION));
-      if (snapshot.empty) {
-        // Seed Firebase
-        for (const expense of PRELOADED_EXPENSES) {
-          const { id, ...data } = expense;
-          await addDoc(collection(db, EXPENSES_COLLECTION), {
-            ...data,
-            createdAt: serverTimestamp(),
-          });
-        }
-      }
+      await fetch("/api/expenses?seed=true", { cache: "no-store" });
       return;
     } catch (e) {
-      console.warn("[Storage] Firebase seed check failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+      console.warn("[Storage] Server seed request failed:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
     }
   }
 
@@ -344,25 +361,20 @@ export async function seedInitialData(): Promise<void> {
 
 // Force re-seed function (for the "Restore Pre-loaded Expenses" button)
 export async function forceReseedExpenses(): Promise<number> {
-  if (firebaseAvailable !== false) {
+  if (serverAvailable !== false) {
     try {
-      // Clear and reseed Firebase
-      const snapshot = await getDocs(collection(db, EXPENSES_COLLECTION));
-      const deletePromises = snapshot.docs.map((d) => deleteDoc(d.ref));
-      await Promise.all(deletePromises);
-
-      for (const expense of PRELOADED_EXPENSES) {
-        const { id, ...data } = expense;
-        await addDoc(collection(db, EXPENSES_COLLECTION), {
-          ...data,
-          createdAt: serverTimestamp(),
-        });
+      const res = await fetch("/api/expenses/reseed", {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        serverAvailable = true;
+        return data.count || PRELOADED_EXPENSES.length;
       }
-      firebaseAvailable = true;
-      return PRELOADED_EXPENSES.length;
+      if (res.status === 503) serverAvailable = false;
     } catch (e) {
-      console.warn("[Storage] Firebase reseed failed, using localStorage:", e instanceof Error ? e.message : String(e));
-      firebaseAvailable = false;
+      console.warn("[Storage] Server reseed failed, using localStorage:", e instanceof Error ? e.message : String(e));
+      serverAvailable = false;
     }
   }
 
@@ -372,30 +384,12 @@ export async function forceReseedExpenses(): Promise<number> {
   return PRELOADED_EXPENSES.length;
 }
 
-// ========== Real-time Listeners ==========
+// ========== Real-time Listeners (now polling-based) ==========
 
 export function onExpensesChange(callback: (expenses: Expense[]) => void): () => void {
-  if (firebaseAvailable === true) {
-    try {
-      const q = query(collection(db, EXPENSES_COLLECTION), orderBy("date", "desc"));
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const expenses = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Expense));
-          callback(expenses);
-        },
-        (error) => {
-          console.warn("[Storage] Firebase onSnapshot error, switching to localStorage polling:", error.message);
-          firebaseAvailable = false;
-          // Fall back to localStorage polling
-          startLSPolling(LS_EXPENSES_KEY, callback);
-        }
-      );
-      return unsubscribe;
-    } catch (e) {
-      console.warn("[Storage] Firebase listener setup failed:", e);
-      firebaseAvailable = false;
-    }
+  // Try server polling if server is available
+  if (serverAvailable === true) {
+    return startServerPolling<Expense>("/api/expenses", "expenses", callback);
   }
 
   // Fallback: poll localStorage
@@ -403,34 +397,54 @@ export function onExpensesChange(callback: (expenses: Expense[]) => void): () =>
 }
 
 export function onRevenueChange(callback: (revenue: Revenue[]) => void): () => void {
-  if (firebaseAvailable === true) {
-    try {
-      const q = query(collection(db, REVENUE_COLLECTION), orderBy("date", "desc"));
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const revenue = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Revenue));
-          callback(revenue);
-        },
-        (error) => {
-          console.warn("[Storage] Firebase onSnapshot error, switching to localStorage polling:", error.message);
-          firebaseAvailable = false;
-          startLSPolling(LS_REVENUE_KEY, callback);
-        }
-      );
-      return unsubscribe;
-    } catch (e) {
-      console.warn("[Storage] Firebase listener setup failed:", e);
-      firebaseAvailable = false;
-    }
+  if (serverAvailable === true) {
+    return startServerPolling<Revenue>("/api/revenue", "revenue", callback);
   }
 
   return startLSPolling(LS_REVENUE_KEY, callback);
 }
 
+// Poll server API for changes (every 5 seconds)
+function startServerPolling<T>(
+  url: string,
+  dataKey: string,
+  callback: (data: T[]) => void
+): () => void {
+  let lastValue = "";
+  let active = true;
+
+  const poll = async () => {
+    if (!active) return;
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const items = data[dataKey] || [];
+        const serialized = JSON.stringify(items);
+        if (serialized !== lastValue) {
+          lastValue = serialized;
+          callback(items as T[]);
+        }
+      }
+    } catch (e) {
+      // Network error, keep polling
+      console.warn("[Storage] Server poll error:", e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // Initial fetch
+  poll();
+
+  const interval = setInterval(poll, 5000);
+
+  return () => {
+    active = false;
+    clearInterval(interval);
+  };
+}
+
 // Poll localStorage for changes (poor man's real-time)
 function startLSPolling<T>(key: string, callback: (data: T[]) => void): () => void {
-  // Initial load
   let lastValue = JSON.stringify(readLS<T[]>(key, []));
   callback(readLS<T[]>(key, []));
 
@@ -442,7 +456,6 @@ function startLSPolling<T>(key: string, callback: (data: T[]) => void): () => vo
     }
   }, 1000);
 
-  // Also listen for storage events (cross-tab updates)
   const storageHandler = (e: StorageEvent) => {
     if (e.key === key && e.newValue) {
       try {
@@ -470,11 +483,11 @@ function startLSPolling<T>(key: string, callback: (data: T[]) => void): () => vo
 // ========== Utility ==========
 
 export function isFirebaseConnected(): boolean {
-  return firebaseAvailable === true;
+  return serverAvailable === true;
 }
 
 export function resetFirebaseCheck(): void {
-  firebaseAvailable = null;
+  serverAvailable = null;
 }
 
 // ========== Auto-categorization ==========

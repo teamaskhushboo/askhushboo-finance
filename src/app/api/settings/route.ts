@@ -1,26 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  db,
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-} from "@/lib/firebase";
+  getAdminDb,
+  SETTINGS_COLLECTION,
+  SETTINGS_DOC,
+  isAdminAvailable,
+} from "@/lib/firebase-admin";
 
-const SETTINGS_COLLECTION = "finance_settings";
-const SETTINGS_DOC = "main";
-
-// Note: When Firestore security rules block access, this endpoint will return
-// the default settings. The client-side storage.ts handles localStorage fallback
-// automatically, so the user can still save settings locally.
-
+/**
+ * GET /api/settings
+ * Returns the app settings (AI provider config).
+ * Uses server-side Admin SDK to bypass locked-down Firestore rules.
+ */
 export async function GET() {
   try {
-    const docRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC);
-    const snapshot = await getDoc(docRef);
+    if (!isAdminAvailable()) {
+      // Return defaults if Admin SDK not configured
+      return NextResponse.json({
+        id: SETTINGS_DOC,
+        aiApiKey: "",
+        aiProvider: "groq",
+        aiModelName: "llama-3.3-70b-versatile",
+        aiCustomEndpoint: "",
+        updatedAt: null,
+        firebaseConnected: false,
+        error: "Server-side Firebase not configured. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars in Vercel.",
+      });
+    }
 
-    if (snapshot.exists()) {
-      const data = snapshot.data();
+    const db = getAdminDb()!;
+    const docRef = db.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC);
+    const snapshot = await docRef.get();
+
+    if (snapshot.exists) {
+      const data = snapshot.data()!;
       return NextResponse.json({
         id: snapshot.id,
         aiApiKey: data.aiApiKey || "",
@@ -42,8 +54,7 @@ export async function GET() {
       firebaseConnected: true,
     });
   } catch (error) {
-    console.error("Settings GET error (Firebase unavailable):", error instanceof Error ? error.message : String(error));
-    // Return defaults so client can use localStorage fallback
+    console.error("[API /settings GET] Error:", error instanceof Error ? error.message : String(error));
     return NextResponse.json({
       id: SETTINGS_DOC,
       aiApiKey: "",
@@ -52,45 +63,59 @@ export async function GET() {
       aiCustomEndpoint: "",
       updatedAt: null,
       firebaseConnected: false,
-      error: "Firebase unavailable - using localStorage",
+      error: "Settings fetch failed",
     });
   }
 }
 
+/**
+ * POST /api/settings
+ * Saves app settings to Firestore via Admin SDK.
+ * Body: { aiApiKey, aiProvider, aiModelName, aiCustomEndpoint }
+ */
 export async function POST(req: NextRequest) {
   try {
+    if (!isAdminAvailable()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Server-side Firebase not configured. Ask the developer to set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars in Vercel.",
+          needsConfig: true,
+        },
+        { status: 503 }
+      );
+    }
+
     const body = await req.json();
     const { aiApiKey, aiProvider, aiModelName, aiCustomEndpoint } = body;
 
-    // Try to save to Firebase
-    try {
-      const docRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC);
-      await setDoc(docRef, {
+    const db = getAdminDb()!;
+    const docRef = db.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC);
+
+    await docRef.set(
+      {
         aiApiKey: aiApiKey || "",
         aiProvider: aiProvider || "groq",
         aiModelName: aiModelName || "llama-3.3-70b-versatile",
         aiCustomEndpoint: aiCustomEndpoint || "",
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
 
-      return NextResponse.json({
-        success: true,
-        firebaseConnected: true,
-        message: "Settings saved to Firebase cloud",
-      });
-    } catch (firebaseError) {
-      console.error("Settings POST Firebase error (client should use localStorage):", firebaseError instanceof Error ? firebaseError.message : String(firebaseError));
-      // Don't fail - tell client to use localStorage
-      return NextResponse.json({
-        success: true,
-        firebaseConnected: false,
-        message: "Settings saved locally (Firebase unavailable). See console for fix instructions.",
-      });
-    }
+    return NextResponse.json({
+      success: true,
+      firebaseConnected: true,
+      message: "Settings saved to Firebase cloud (secure)",
+    });
   } catch (error) {
-    console.error("Settings POST error:", error);
+    console.error("[API /settings POST] Error:", error instanceof Error ? error.message : String(error));
     return NextResponse.json(
-      { error: "Failed to save settings", details: error instanceof Error ? error.message : String(error) },
+      {
+        success: false,
+        error: "Failed to save settings",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }

@@ -1,45 +1,15 @@
-import { initializeApp, getApps } from "firebase/app";
-import {
-  getFirestore,
-  collection,
-  doc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  setDoc,
-  getDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+/**
+ * DEPRECATED - This file is no longer used.
+ *
+ * All Firestore operations now go through server-side API routes
+ * that use the Firebase Admin SDK (see src/lib/firebase-admin.ts).
+ *
+ * The browser no longer talks to Firestore directly. This means:
+ * 1. The Firebase API key in the client bundle is harmless (rules deny all client access)
+ * 2. All data operations are authenticated server-side via service account
+ * 3. The Firestore security rules are locked down (see firestore.rules)
+ *
+ * This file is kept only for backward compatibility. Do not import from it.
+ */
 
-const firebaseConfig = {
-  apiKey: "AIzaSyC-zZILQ1BHa1IufQ7YbKHYuQiEriUlm0A",
-  authDomain: "as-khushboo-os.firebaseapp.com",
-  projectId: "as-khushboo-os",
-  storageBucket: "as-khushboo-os.firebasestorage.app",
-  messagingSenderId: "1048209793662",
-  appId: "1:1048209793662:web:bbe45759ba128202132e2f",
-};
-
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app);
-
-export {
-  db,
-  collection,
-  doc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  setDoc,
-  getDoc,
-  serverTimestamp,
-};
+export const FIREBASE_DEPRECATED = true;
