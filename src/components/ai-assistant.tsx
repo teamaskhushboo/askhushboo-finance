@@ -128,6 +128,54 @@ export default function AIAssistant({
         let result = "";
         const payload = action.payload;
 
+        // Helper: find expense by exact id OR by description keyword match
+        const findExpense = (payload: Record<string, unknown>): Expense => {
+          const id = payload.id as string | undefined;
+          const descriptionMatch = payload.description_match as string | undefined;
+
+          // Reject "all" as an id - this is a hallucination from AI
+          if (id && (id.toLowerCase() === "all" || id.toLowerCase() === "every" || id.toLowerCase() === "everything")) {
+            throw new Error(
+              'AI ne "all" use kiya jo invalid hai. AI ko bolo ek specific expense ka naam ya id bata kar update kare.'
+            );
+          }
+
+          // Try exact id match first
+          if (id) {
+            const exact = expenses.find((e) => e.id === id);
+            if (exact) return exact;
+            // If id was given but not found, that's a hard error
+            throw new Error(`Expense with id "${id}" not found. AI ko bolo expense ke naam (description) se match kare.`);
+          }
+
+          // Try description_match (case-insensitive substring match)
+          if (descriptionMatch) {
+            const keyword = descriptionMatch.toLowerCase().trim();
+            const matches = expenses.filter(
+              (e) =>
+                e.description.toLowerCase().includes(keyword) ||
+                (e.notes && e.notes.toLowerCase().includes(keyword)) ||
+                e.category.toLowerCase().includes(keyword)
+            );
+            if (matches.length === 0) {
+              throw new Error(
+                `Koi expense nahi mila jis mein "${descriptionMatch}" ho. AI ko bolo expense list se exact naam copy kare.`
+              );
+            }
+            if (matches.length > 1) {
+              // Use the most recent match but mention the ambiguity
+              const chosen = matches[0];
+              console.warn(
+                `[AI Action] ${matches.length} expenses matched "${descriptionMatch}". Using first: ${chosen.description}`
+              );
+              return chosen;
+            }
+            return matches[0];
+          }
+
+          throw new Error("Expense update/delete ke liye 'id' ya 'description_match' field zaroori hai.");
+        };
+
         if (action.type === "add_expense") {
           if (!onAddExpense) {
             throw new Error("Add expense handler not available");
@@ -148,11 +196,7 @@ export default function AIAssistant({
           if (!onUpdateExpense) {
             throw new Error("Update expense handler not available");
           }
-          const expenseId = payload.id as string;
-          const existing = expenses.find((e) => e.id === expenseId);
-          if (!existing) {
-            throw new Error(`Expense with id ${expenseId} not found`);
-          }
+          const existing = findExpense(payload);
           const updatedExpense: Expense = {
             ...existing,
             ...(payload.date ? { date: payload.date as string } : {}),
@@ -163,17 +207,16 @@ export default function AIAssistant({
             ...(payload.notes ? { notes: payload.notes as string } : {}),
           };
           await onUpdateExpense(updatedExpense);
-          result = `Expense updated: ${updatedExpense.description}`;
-          toast.success(`AI ne expense update kar diya`);
+          result = `Expense updated: "${updatedExpense.description}" - new amount Rs ${updatedExpense.amount.toLocaleString("en-PK")}`;
+          toast.success(`AI ne expense update kar diya: ${updatedExpense.description}`);
         } else if (action.type === "delete_expense") {
           if (!onDeleteExpense) {
             throw new Error("Delete expense handler not available");
           }
-          const expenseId = payload.id as string;
-          const existing = expenses.find((e) => e.id === expenseId);
-          await onDeleteExpense(expenseId);
-          result = `Expense deleted: ${existing?.description || expenseId}`;
-          toast.success(`AI ne expense delete kar diya`);
+          const existing = findExpense(payload);
+          await onDeleteExpense(existing.id);
+          result = `Expense deleted: ${existing.description} (was Rs ${existing.amount.toLocaleString("en-PK")})`;
+          toast.success(`AI ne expense delete kar diya: ${existing.description}`);
         } else if (action.type === "add_revenue") {
           if (!onAddRevenue) {
             throw new Error("Add revenue handler not available");
@@ -408,7 +451,8 @@ export default function AIAssistant({
                     <div className="space-y-1 text-xs text-muted-foreground">
                       <p>&quot;Rs 5000 ka packaging expense add karo - 100 boxes&quot;</p>
                       <p>&quot;Shahkaar ki 2 bottles sold - Rs 8000 revenue add karo&quot;</p>
-                      <p>&quot;Pichle expense ki price 6000 kar do&quot;</p>
+                      <p>&quot;Perfume Boxes wali expense ki price 40000 kar do&quot;</p>
+                      <p>&quot;Saari expenses ki list do&quot;</p>
                     </div>
                   </div>
                 </div>

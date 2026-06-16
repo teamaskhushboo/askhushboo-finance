@@ -58,24 +58,19 @@ export default function Sidebar({
         {/* Brand header */}
         <div className="p-6 border-b border-[rgba(223,173,24,0.15)]">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
               <AnimatedLogo size="sm" />
-              <div>
-                <h1 className="as-logo-text text-xl font-bold tracking-wide">
-                  #AS KHUSHBOO
-                </h1>
-                <p className="text-xs text-muted-foreground mt-1 italic">
-                  Khushboo That Speaks for YOU 💛
-                </p>
-              </div>
             </div>
             <button
               onClick={onClose}
-              className="lg:hidden text-muted-foreground hover:text-gold transition-colors"
+              className="lg:hidden text-muted-foreground hover:text-gold transition-colors flex-shrink-0"
             >
               <X size={20} />
             </button>
           </div>
+          <p className="text-[10px] text-muted-foreground mt-2 italic text-center">
+            Khushboo That Speaks for YOU 💛
+          </p>
         </div>
 
         {/* Navigation */}

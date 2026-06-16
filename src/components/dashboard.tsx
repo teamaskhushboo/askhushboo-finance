@@ -26,7 +26,6 @@ import {
   ArrowDownRight,
 } from "lucide-react";
 import { Expense, Revenue, CHART_COLORS } from "@/lib/types";
-import { TOTAL_INVESTMENT } from "@/lib/data";
 
 interface DashboardProps {
   expenses: Expense[];
@@ -125,7 +124,8 @@ export default function Dashboard({ expenses, revenue, isLoading }: DashboardPro
   const metricCards = [
     {
       title: "Total Investment",
-      value: formatPKR(TOTAL_INVESTMENT),
+      value: formatPKR(totalExpenses),
+      subtitle: `${expenses.length} items`,
       icon: <Wallet size={22} />,
       color: "text-gold",
       bgColor: "bg-gold/10",
@@ -149,13 +149,13 @@ export default function Dashboard({ expenses, revenue, isLoading }: DashboardPro
       prefix: netProfit >= 0 ? "+" : "-",
     },
     {
-      title: "Total Expenses",
-      value: `${expenses.length} items`,
-      subtitle: formatPKR(totalExpenses),
+      title: "Break-even Status",
+      value: formatPKR(Math.abs(totalExpenses - totalRevenue)),
+      subtitle: totalRevenue >= totalExpenses ? "Recovered 💛" : `Need to recover`,
       icon: <Activity size={22} />,
-      color: "text-gold",
-      bgColor: "bg-gold/10",
-      borderColor: "border-gold/30",
+      color: totalRevenue >= totalExpenses ? "text-success" : "text-gold",
+      bgColor: totalRevenue >= totalExpenses ? "bg-success/10" : "bg-gold/10",
+      borderColor: totalRevenue >= totalExpenses ? "border-success/30" : "border-gold/30",
     },
   ];
 

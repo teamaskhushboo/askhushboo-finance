@@ -63,7 +63,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <AnimatedLogo size="lg" className="mx-auto mb-4" />
-          <h1 className="as-logo-text text-2xl font-bold mb-2">#AS KHUSHBOO</h1>
           <p className="text-muted-foreground text-sm">Loading...</p>
         </div>
       </div>
@@ -76,7 +75,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <AnimatedLogo size="lg" className="mx-auto mb-4" />
-            <h1 className="as-logo-text text-3xl font-bold mb-2">#AS KHUSHBOO</h1>
             <p className="text-muted-foreground text-sm">
               Khushboo That Speaks for YOU
             </p>

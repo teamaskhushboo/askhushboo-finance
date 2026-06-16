@@ -240,7 +240,6 @@ export default function Home() {
         <div className="min-h-screen bg-black flex items-center justify-center">
           <div className="text-center">
             <AnimatedLogo size="lg" className="mx-auto mb-4" />
-            <h1 className="as-logo-text text-2xl font-bold mb-2">#AS KHUSHBOO</h1>
             <p className="text-muted-foreground text-sm">
               Loading your finance data...
             </p>
@@ -275,9 +274,8 @@ export default function Home() {
             >
               <Menu size={22} />
             </Button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center">
               <AnimatedLogo size="xs" />
-              <h1 className="as-logo-text font-bold text-lg">#AS KHUSHBOO</h1>
             </div>
             <div className="w-10" />
           </div>
@@ -289,15 +287,6 @@ export default function Home() {
           <div className="hidden lg:flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
               <AnimatedLogo size="lg" />
-              <div>
-                <h1 className="text-3xl font-bold">
-                  <span className="as-logo-text">#AS KHUSHBOO</span>{" "}
-                  <span className="text-gold">Finance</span>
-                </h1>
-                <p className="text-muted-foreground text-sm mt-1">
-                  Khushboo That Speaks for YOU 💛
-                </p>
-              </div>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground">

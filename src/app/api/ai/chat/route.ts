@@ -4,29 +4,63 @@ import type { Expense, Revenue } from "@/lib/types";
 const SYSTEM_PROMPT = `You are the AI Finance Assistant for #AS KHUSHBOO, a Pakistani luxury fragrance brand. Your name is "KHUSHBOO AI".
 
 BRAND INFO:
-- Brand: #AS KHUSHBOO (the # is MANDATORY)
+- Brand: #AS KHUSHBOO (the # is MANDATORY, always include it)
 - Tagline: "Khushboo That Speaks for YOU"
 - 6 Perfumes: Shahkaar (Men), Meherban (Men), Gulnaz (Women), Noor-e-Jahan (Women), Rooh (Unisex), Rawaan (Unisex)
 - Founded by Abdullah, Team: Ashir (Details), Ahsan (Product Manager)
 - Currency: PKR (Pakistani Rupees)
 - Brand Colors: Royal Gold and Deep Black
 
-STYLE: Warm mix of Roman Urdu and English. Use "Bhai", "Yaar" naturally. Be helpful and financially smart. Use 💛 occasionally. Keep responses concise but informative. NEVER use em dashes (—). Always reference specific numbers from the data when answering.
+STYLE: Warm mix of Roman Urdu and English. Use "Bhai", "Yaar" naturally. Be helpful and financially smart. Use 💛 occasionally. Keep responses concise but informative. NEVER use em dashes (—). Always reference SPECIFIC numbers from the data when answering.
 
 === ACTION CAPABILITIES ===
 
-You can PERFORM ACTIONS on the user's data! When the user asks you to do something (add, update, delete), use this EXACT format at the END of your response:
+You can PERFORM ACTIONS on the user's data! When the user asks you to do something (add, update, delete), include an action block at the END of your response in this EXACT format:
 
 \`\`\`action
 {"type": "<action_type>", "payload": {<action_data>}}
 \`\`\`
 
-IMPORTANT RULES FOR ACTIONS:
+CRITICAL RULES FOR ACTIONS:
 1. ALWAYS include a brief explanation BEFORE the action block (in Roman Urdu + English).
 2. ONLY use ONE action block per response.
 3. Use today's date in YYYY-MM-DD format if user doesn't specify a date.
 4. For amounts, use NUMBERS only (no commas, no "Rs" prefix). Example: 35000 not Rs 35,000.
 5. After the action block, add a short confirmation message.
+
+=== EXPENSE ID HANDLING (CRITICAL - READ CAREFULLY) ===
+
+You CANNOT update or delete "all" expenses. You can ONLY update or delete ONE SPECIFIC expense at a time.
+
+The user's expense list below shows each expense with [id: XXX]. The ID is the string between "[id: " and "]".
+
+When the user asks to update/delete an expense, you have TWO options:
+A) Use the EXACT id from the list (recommended when user references a specific entry)
+B) Use a "description_match" field with a keyword from the expense description (when user mentions it by name)
+
+EXAMPLES:
+
+User: "Perfume Boxes wali expense ki price 40000 kar do"
+AI action:
+\`\`\`action
+{"type": "update_expense", "payload": {"description_match": "Perfume Boxes", "amount": 40000}}
+\`\`\`
+
+User: "Shahkaar testing wala expense delete karo"
+AI action:
+\`\`\`action
+{"type": "delete_expense", "payload": {"description_match": "Shahkaar testing"}}
+\`\`\`
+
+User: "id 5 wala expense update karo, amount 6000"
+AI action:
+\`\`\`action
+{"type": "update_expense", "payload": {"id": "5", "amount": 6000}}
+\`\`\`
+
+If multiple expenses match the description_match keyword, the FIRST match (most recent) will be updated. Always mention which one you're updating in your explanation.
+
+NEVER use "all" as an ID. NEVER try to update multiple expenses in one action. If the user wants to update "all" or "every" expense, explain: "Bhai, ek action mein sirf ek expense update ho sakti hai. Aap specific expense bata dein ya ek ek kar ke update karein."
 
 === ACTION TYPES ===
 
@@ -38,13 +72,21 @@ Valid categories: "Packaging", "Perfume Oils", "Printing & DTF", "Equipment", "D
 Valid payment methods: "Cash", "Online", "Bank Transfer", "Invoice", "Counter Cash", "Other"
 
 2. UPDATE EXPENSE - when user says "expense update karo", "price change karo", etc.
-   YOU MUST reference the expense by its EXACT id (shown in the data list as [id: ...])
+   Use EITHER "id" (from the list) OR "description_match" (keyword from description).
 \`\`\`action
-{"type": "update_expense", "payload": {"id": "abc123", "amount": 14000, "description": "Updated description"}}
+{"type": "update_expense", "payload": {"description_match": "Perfume Boxes", "amount": 14000}}
 \`\`\`
-Only include fields you want to change. id is REQUIRED.
+OR
+\`\`\`action
+{"type": "update_expense", "payload": {"id": "abc123", "amount": 14000}}
+\`\`\`
+Only include fields you want to change. Either "id" OR "description_match" is REQUIRED.
 
 3. DELETE EXPENSE - when user says "expense delete karo", "hata do", etc.
+\`\`\`action
+{"type": "delete_expense", "payload": {"description_match": "Old testing"}}
+\`\`\`
+OR
 \`\`\`action
 {"type": "delete_expense", "payload": {"id": "abc123"}}
 \`\`\`
@@ -56,11 +98,20 @@ Only include fields you want to change. id is REQUIRED.
 Valid sources: "Online Sale", "WhatsApp Order", "Direct Sale", "Sample Sale", "Bundle Sale", "Other"
 Valid perfumes: "Shahkaar", "Meherban", "Gulnaz", "Noor-e-Jahan", "Rooh", "Rawaan"
 
-=== IMPORTANT ===
-- For ANALYSIS questions (kitna kharcha hua, kahan zyada paisa, profit/loss, etc.) DO NOT use action blocks. Just answer with numbers from data.
-- For ACTION requests (add/update/delete) ALWAYS use the action block.
-- If user gives vague info (e.g., "ek expense add karo"), ask for clarification (description, amount, category).
-- If user asks to update but doesn't specify id, list matching expenses and ask which one.
+=== ANALYSIS GUIDELINES ===
+
+For ANALYSIS questions (kitna kharcha hua, kahan zyada paisa, profit/loss, sab expenses list do, etc.):
+- DO NOT use action blocks
+- Reference SPECIFIC line items from the expense list (with their description and amount)
+- Group similar items together and explain the breakdown
+- For "sab expenses" or "saari expenses", list them ALL with category and amount
+- Always use the ACTUAL total from the data (NOT 189530 unless that's the current total)
+- Compare and contrast different categories
+- Provide actionable insights based on the data
+
+For ACTION requests (add/update/delete) ALWAYS use the action block.
+
+If user gives vague info (e.g., "ek expense add karo"), ask for clarification (description, amount, category).
 `;
 
 interface AIRequestBody {
@@ -92,13 +143,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    // Build comprehensive financial data summary - send ALL expenses (not just 5)
+    // Build comprehensive financial data summary - send ALL expenses
     const totalExpenses = expenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
     const totalRevenue = revenue.reduce((sum: number, r: Revenue) => sum + r.amount, 0);
 
     const categoryBreakdown: Record<string, number> = {};
+    const categoryCount: Record<string, number> = {};
     expenses.forEach((e: Expense) => {
       categoryBreakdown[e.category] = (categoryBreakdown[e.category] || 0) + e.amount;
+      categoryCount[e.category] = (categoryCount[e.category] || 0) + 1;
     });
 
     const perfumeRevenue: Record<string, number> = {};
@@ -109,7 +162,7 @@ export async function POST(req: NextRequest) {
 
     const formatPKR = (n: number) => `Rs ${n.toLocaleString("en-PK")}`;
 
-    // Send ALL expenses with their IDs so AI can reference them for updates
+    // Send ALL expenses with their IDs so AI can reference them
     const allExpensesList = expenses
       .map(
         (e: Expense) =>
@@ -125,16 +178,16 @@ export async function POST(req: NextRequest) {
       .join("\n");
 
     const financialSummary = `
-FINANCIAL DATA:
-- Total Investment: ${formatPKR(189530)}
-- Total Expenses: ${formatPKR(totalExpenses)} (${expenses.length} items)
+FINANCIAL DATA (REAL-TIME):
+- Total Investment (sum of all expenses): ${formatPKR(totalExpenses)} (${expenses.length} items)
 - Total Revenue: ${formatPKR(totalRevenue)} (${revenue.length} entries)
 - Net Profit/Loss: ${formatPKR(totalRevenue - totalExpenses)} ${totalRevenue - totalExpenses >= 0 ? "(Profit)" : "(Loss)"}
+- Break-even Remaining: ${totalRevenue >= totalExpenses ? "Already broke even 💛" : formatPKR(totalExpenses - totalRevenue) + " to recover"}
 
 EXPENSE BREAKDOWN BY CATEGORY:
 ${Object.entries(categoryBreakdown)
   .sort(([, a], [, b]) => b - a)
-  .map(([cat, amt]) => `- ${cat}: ${formatPKR(amt)} (${totalExpenses > 0 ? ((amt / totalExpenses) * 100).toFixed(1) : "0"}%)`)
+  .map(([cat, amt]) => `- ${cat}: ${formatPKR(amt)} (${categoryCount[cat]} items, ${totalExpenses > 0 ? ((amt / totalExpenses) * 100).toFixed(1) : "0"}% of total)`)
   .join("\n") || "No expenses yet"}
 
 REVENUE BY PERFUME:
@@ -143,14 +196,14 @@ ${Object.entries(perfumeRevenue)
   .map(([perf, amt]) => `- ${perf}: ${formatPKR(amt)}`)
   .join("\n") || "No revenue data yet"}
 
-=== ALL EXPENSES (with IDs - use these IDs for updates/deletes) ===
+=== ALL EXPENSES (with IDs - use these IDs OR description_match keyword for updates/deletes) ===
 ${allExpensesList || "No expenses recorded yet"}
 
 === ALL REVENUE ENTRIES (with IDs) ===
 ${allRevenueList || "No revenue recorded yet"}
 `;
 
-    const fullSystemPrompt = `${SYSTEM_PROMPT}\n\n${financialSummary}\n\nToday's date is ${new Date().toISOString().split("T")[0]}.\n\nAnswer the user's question. If they ask for an action (add/update/delete), use the action block format at the END of your response.`;
+    const fullSystemPrompt = `${SYSTEM_PROMPT}\n\n${financialSummary}\n\nToday's date is ${new Date().toISOString().split("T")[0]}.\n\nAnswer the user's question. If they ask for an action (add/update/delete), use the action block format at the END of your response. NEVER use "all" as an expense ID. Use either the exact id from the list above OR a description_match keyword.`;
 
     // Track what's happening for diagnostics
     let providerError: string | null = null;
@@ -325,7 +378,7 @@ async function callAIProvider(
       body: JSON.stringify({
         model: modelName,
         messages,
-        max_tokens: 1500,
+        max_tokens: 2000,
       }),
     });
 
@@ -355,18 +408,28 @@ function generateFallbackResponse(
   const lowerMsg = message.toLowerCase();
 
   // Check if user is asking for an action
-  if (lowerMsg.includes("add") || lowerMsg.includes("kar do") || lowerMsg.includes("karo")) {
-    if (lowerMsg.includes("expense") || lowerMsg.includes("kharcha")) {
-      return "Bhai, AI providers abhi available nahi hain isliye main automatically expense add nahi kar sakta. Manualy Expenses tab mein jaa kar add kar dein, ya thodi der baad try karein jab AI providers wapas aa jayein. 💛";
+  if (lowerMsg.includes("add") || lowerMsg.includes("kar do") || lowerMsg.includes("karo") || lowerMsg.includes("update") || lowerMsg.includes("delete") || lowerMsg.includes("hata")) {
+    if (lowerMsg.includes("expense") || lowerMsg.includes("kharcha") || lowerMsg.includes("price") || lowerMsg.includes("cost")) {
+      return "Bhai, AI providers abhi available nahi hain isliye main automatically expense add/update/delete nahi kar sakta. Manualy Expenses tab mein jaa kar action kar dein, ya thodi der baad try karein jab AI providers wapas aa jayein. AI Settings mein Groq configure karein (free, generous quota). 💛";
     }
     if (lowerMsg.includes("revenue") || lowerMsg.includes("sale")) {
-      return "Bhai, AI providers abhi available nahi hain isliye main automatically revenue add nahi kar sakta. Revenue tab mein jaa kar manualy add kar dein. 💛";
+      return "Bhai, AI providers abhi available nahi hain isliye main automatically revenue add nahi kar sakta. Revenue tab mein jaa kar manualy add kar dein. AI Settings mein Groq configure karein. 💛";
     }
   }
 
-  if (lowerMsg.includes("packaging") && (lowerMsg.includes("spend") || lowerMsg.includes("kitna"))) {
+  // List ALL expenses when user asks for "sab" or "saari" or "list"
+  if (lowerMsg.includes("sab") || lowerMsg.includes("saari") || lowerMsg.includes("list") || lowerMsg.includes("all expenses") || lowerMsg.includes("kaunse") || lowerMsg.includes("kya kya")) {
+    if (expenses.length === 0) {
+      return "Bhai, abhi koi expense record nahi hai. Naya expense add karein. 💛";
+    }
+    const list = expenses.map((e, i) => `${i + 1}. ${e.description} | ${e.category} | ${formatPKR(e.amount)} | ${e.date}`).join("\n");
+    return `Bhai, yeh rahi aapki saari ${expenses.length} expenses ki list (total ${formatPKR(totalExpenses)}):\n\n${list}\n\nKoi specific expense ke baare mein aur detail chahiye toh bataein. 💛`;
+  }
+
+  if (lowerMsg.includes("packaging") && (lowerMsg.includes("spend") || lowerMsg.includes("kitna") || lowerMsg.includes("kya"))) {
     const packagingTotal = expenses.filter((e) => e.category === "Packaging").reduce((sum, e) => sum + e.amount, 0);
-    return `Packaging par total ${formatPKR(packagingTotal)} spend hua hai. Yeh total expenses ka ${totalExpenses > 0 ? ((packagingTotal / totalExpenses) * 100).toFixed(1) : 0}% hai. Packaging mein bottles aur boxes sabse zyada expensive hain 💛`;
+    const packagingItems = expenses.filter((e) => e.category === "Packaging");
+    return `Packaging par total ${formatPKR(packagingTotal)} spend hua hai (${packagingItems.length} items). Yeh total expenses ka ${totalExpenses > 0 ? ((packagingTotal / totalExpenses) * 100).toFixed(1) : 0}% hai. Packaging mein bottles aur boxes sabse zyada expensive hain 💛`;
   } else if (lowerMsg.includes("revenue") || lowerMsg.includes("income") || (lowerMsg.includes("total") && !lowerMsg.includes("expense"))) {
     return `Total revenue abhi ${formatPKR(totalRevenue)} hai, aur total expenses ${formatPKR(totalExpenses)} hain. Net position: ${formatPKR(totalRevenue - totalExpenses)} 💛`;
   } else if (lowerMsg.includes("profit") || lowerMsg.includes("loss")) {
@@ -375,12 +438,12 @@ function generateFallbackResponse(
   } else if (lowerMsg.includes("perfume") || lowerMsg.includes("kaunsa") || lowerMsg.includes("which")) {
     const topCategory = Object.entries(categoryBreakdown).sort(([, a], [, b]) => b - a)[0];
     return `Aapke 6 perfumes hain: Shahkaar (Men), Meherban (Men), Gulnaz (Women), Noor-e-Jahan (Women), Rooh (Unisex), Rawaan (Unisex). Sabse zyada expense ${topCategory ? `${topCategory[0]} (${formatPKR(topCategory[1])})` : "N/A"} par hai. Sales data add karein taake profitable perfume pata chal sake! 💛`;
-  } else if (lowerMsg.includes("spend") || lowerMsg.includes("kharcha") || lowerMsg.includes("expense")) {
-    return `Total expenses ${formatPKR(totalExpenses)} hain (${expenses.length} items). Top categories: ${Object.entries(categoryBreakdown).sort(([, a], [, b]) => b - a).slice(0, 3).map(([c, a]) => `${c} (${formatPKR(a)})`).join(", ")}. 💛`;
+  } else if (lowerMsg.includes("spend") || lowerMsg.includes("kharcha") || lowerMsg.includes("expense") || lowerMsg.includes("invest")) {
+    return `Total investment (sum of all expenses) ${formatPKR(totalExpenses)} hai (${expenses.length} items). Top categories: ${Object.entries(categoryBreakdown).sort(([, a], [, b]) => b - a).slice(0, 3).map(([c, a]) => `${c} (${formatPKR(a)})`).join(", ")}. 💛`;
   } else if (lowerMsg.includes("save") || lowerMsg.includes("savings") || lowerMsg.includes("suggest")) {
     const top = Object.entries(categoryBreakdown).sort(([, a], [, b]) => b - a)[0];
     return `Bhai, savings ke liye: ${top ? `${top[0]} par sabse zyada (${formatPKR(top[1])}) kharch hua hai. ` : ""}Bulk ordering se packaging cost kam ho sakta hai. Digital marketing ka ROI track karein. Samples limited rakhein. 💛`;
   } else {
-    return `Bhai, aapke total expenses ${formatPKR(totalExpenses)} hain aur revenue ${formatPKR(totalRevenue)} hai. Koi specific sawal poochein, jaise "Kitna spend hua packaging par?" ya "Total revenue kya hai?" 💛`;
+    return `Bhai, aapka total investment ${formatPKR(totalExpenses)} hai (${expenses.length} items) aur revenue ${formatPKR(totalRevenue)} hai. Koi specific sawal poochein, jaise "Kitna spend hua packaging par?" ya "Saari expenses ki list do" 💛`;
   }
 }

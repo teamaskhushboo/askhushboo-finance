@@ -20,7 +20,7 @@ import {
   Key,
 } from "lucide-react";
 import { Expense, Revenue, AppSettings, CHART_COLORS } from "@/lib/types";
-import { TOTAL_INVESTMENT } from "@/lib/data";
+// Total investment is computed dynamically from the expenses array (no hardcoded value).
 
 interface Insight {
   type: "alert" | "suggestion" | "prediction" | "analysis";
@@ -151,9 +151,9 @@ export default function InsightsPanel({
       insights.push({
         type: "prediction",
         title: "No Revenue Yet",
-        description: `Total investment is ${formatPKR(
-          TOTAL_INVESTMENT
-        )}. Start tracking sales to see profitability analysis.`,
+        description: `Total investment so far is ${formatPKR(
+          totalExpenses
+        )} across ${expenses.length} items. Start tracking sales to see profitability analysis.`,
       });
     }
 
