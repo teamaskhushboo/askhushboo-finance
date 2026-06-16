@@ -19,6 +19,15 @@ export interface Revenue {
   notes: string;
 }
 
+export interface AppSettings {
+  id: string; // always "main"
+  aiApiKey: string;
+  aiProvider: "gemini" | "openai" | "custom";
+  aiModelName: string;
+  aiCustomEndpoint: string;
+  updatedAt: unknown; // Firestore timestamp
+}
+
 export type ExpenseCategory =
   | "Packaging"
   | "Perfume Oils"

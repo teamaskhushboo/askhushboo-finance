@@ -8,6 +8,8 @@ import {
   Bot,
   Lightbulb,
   X,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { ActiveTab } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -17,6 +19,7 @@ interface SidebarProps {
   onTabChange: (tab: ActiveTab) => void;
   isOpen: boolean;
   onClose: () => void;
+  isConnected: boolean;
 }
 
 const navItems: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
@@ -32,6 +35,7 @@ export default function Sidebar({
   onTabChange,
   isOpen,
   onClose,
+  isConnected,
 }: SidebarProps) {
   return (
     <>
@@ -100,17 +104,34 @@ export default function Sidebar({
           ))}
         </nav>
 
-        {/* Footer info */}
+        {/* Firebase status & footer */}
         <div className="p-4 border-t border-[rgba(223,173,24,0.15)]">
+          {/* Connection status */}
+          <div className="flex items-center gap-2 mb-3">
+            {isConnected ? (
+              <Wifi size={12} className="text-success" />
+            ) : (
+              <WifiOff size={12} className="text-danger" />
+            )}
+            <span className={`text-xs ${isConnected ? "text-success" : "text-danger"}`}>
+              {isConnected ? "Firebase Connected" : "Connecting..."}
+            </span>
+            <div
+              className={`w-2 h-2 rounded-full ml-auto ${
+                isConnected ? "bg-success animate-pulse" : "bg-danger"
+              }`}
+            />
+          </div>
+
           <div className="text-xs text-muted-foreground space-y-1">
             <p>
               Founded by <span className="text-gold">Abdullah</span>
             </p>
             <p>
-              Team: <span className="text-foreground">Ashir</span> (Details) •{" "}
+              Team: <span className="text-foreground">Ashir</span> (Details) &bull;{" "}
               <span className="text-foreground">Ahsan</span> (PM)
             </p>
-            <p className="text-gold/60 pt-1">6 Perfumes • Luxury • 💛</p>
+            <p className="text-gold/60 pt-1">6 Perfumes &bull; Luxury &bull; 💛</p>
           </div>
         </div>
       </aside>

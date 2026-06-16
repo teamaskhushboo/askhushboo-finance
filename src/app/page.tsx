@@ -1,141 +1,137 @@
 "use client";
 
-import { useState, useReducer, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Sidebar, { BottomNav } from "@/components/sidebar";
 import Dashboard from "@/components/dashboard";
 import ExpenseManager from "@/components/expense-manager";
 import RevenueManager from "@/components/revenue-manager";
 import AIAssistant from "@/components/ai-assistant";
 import InsightsPanel from "@/components/insights-panel";
-import { ActiveTab, Expense, Revenue } from "@/lib/types";
+import { ActiveTab, Expense, Revenue, AppSettings } from "@/lib/types";
 import {
-  loadData,
-  addExpense as addExpenseStorage,
-  updateExpense as updateExpenseStorage,
-  deleteExpense as deleteExpenseStorage,
-  addRevenue as addRevenueStorage,
-  updateRevenue as updateRevenueStorage,
-  deleteRevenue as deleteRevenueStorage,
+  getExpenses,
+  addExpense as addExpenseFirestore,
+  updateExpense as updateExpenseFirestore,
+  deleteExpense as deleteExpenseFirestore,
+  getRevenue,
+  addRevenue as addRevenueFirestore,
+  updateRevenue as updateRevenueFirestore,
+  deleteRevenue as deleteRevenueFirestore,
+  getSettings,
+  saveSettings,
+  seedInitialData,
+  onExpensesChange,
+  onRevenueChange,
 } from "@/lib/storage";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface FinanceState {
-  expenses: Expense[];
-  revenue: Revenue[];
-  isHydrated: boolean;
-}
-
-type FinanceAction =
-  | { type: "HYDRATE"; expenses: Expense[]; revenue: Revenue[] }
-  | { type: "ADD_EXPENSE"; expense: Expense }
-  | { type: "UPDATE_EXPENSE"; expense: Expense }
-  | { type: "DELETE_EXPENSE"; id: string }
-  | { type: "ADD_REVENUE"; revenue: Revenue }
-  | { type: "UPDATE_REVENUE"; revenue: Revenue }
-  | { type: "DELETE_REVENUE"; id: string };
-
-function financeReducer(state: FinanceState, action: FinanceAction): FinanceState {
-  switch (action.type) {
-    case "HYDRATE":
-      return {
-        ...state,
-        expenses: action.expenses,
-        revenue: action.revenue,
-        isHydrated: true,
-      };
-    case "ADD_EXPENSE":
-      return { ...state, expenses: [action.expense, ...state.expenses] };
-    case "UPDATE_EXPENSE":
-      return {
-        ...state,
-        expenses: state.expenses.map((e) =>
-          e.id === action.expense.id ? action.expense : e
-        ),
-      };
-    case "DELETE_EXPENSE":
-      return {
-        ...state,
-        expenses: state.expenses.filter((e) => e.id !== action.id),
-      };
-    case "ADD_REVENUE":
-      return { ...state, revenue: [action.revenue, ...state.revenue] };
-    case "UPDATE_REVENUE":
-      return {
-        ...state,
-        revenue: state.revenue.map((r) =>
-          r.id === action.revenue.id ? action.revenue : r
-        ),
-      };
-    case "DELETE_REVENUE":
-      return {
-        ...state,
-        revenue: state.revenue.filter((r) => r.id !== action.id),
-      };
-    default:
-      return state;
-  }
-}
-
 export default function Home() {
-  const [state, dispatch] = useReducer(financeReducer, {
-    expenses: [],
-    revenue: [],
-    isHydrated: false,
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [revenue, setRevenue] = useState<Revenue[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({
+    id: "main",
+    aiApiKey: "",
+    aiProvider: "gemini",
+    aiModelName: "gemini-2.0-flash",
+    aiCustomEndpoint: "",
+    updatedAt: null,
   });
-
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Hydrate from localStorage
+  // Initialize Firebase data and real-time listeners
   useEffect(() => {
-    const data = loadData();
-    dispatch({
-      type: "HYDRATE",
-      expenses: data.expenses,
-      revenue: data.revenue,
-    });
+    let unsubscribeExpenses: (() => void) | undefined;
+    let unsubscribeRevenue: (() => void) | undefined;
+
+    const init = async () => {
+      try {
+        // Seed initial data if needed (only if Firestore is empty)
+        await seedInitialData();
+
+        // Load initial data
+        const [expensesData, revenueData, settingsData] = await Promise.all([
+          getExpenses(),
+          getRevenue(),
+          getSettings(),
+        ]);
+
+        setExpenses(expensesData);
+        setRevenue(revenueData);
+        setSettings(settingsData);
+        setIsFirebaseConnected(true);
+        setIsHydrated(true);
+
+        // Set up real-time listeners
+        unsubscribeExpenses = onExpensesChange((updatedExpenses) => {
+          setExpenses(updatedExpenses);
+        });
+
+        unsubscribeRevenue = onRevenueChange((updatedRevenue) => {
+          setRevenue(updatedRevenue);
+        });
+      } catch (error) {
+        console.error("Firebase initialization error:", error);
+        setIsFirebaseConnected(false);
+        setIsHydrated(true);
+      }
+    };
+
+    init();
+
+    return () => {
+      unsubscribeExpenses?.();
+      unsubscribeRevenue?.();
+    };
   }, []);
 
-  const handleAddExpense = useCallback((expense: Expense) => {
-    addExpenseStorage(expense);
-    dispatch({ type: "ADD_EXPENSE", expense });
+  // Expense CRUD
+  const handleAddExpense = useCallback(async (expense: Expense) => {
+    const newExpense = await addExpenseFirestore(expense);
+    return newExpense;
   }, []);
 
-  const handleUpdateExpense = useCallback((expense: Expense) => {
-    updateExpenseStorage(expense);
-    dispatch({ type: "UPDATE_EXPENSE", expense });
+  const handleUpdateExpense = useCallback(async (expense: Expense) => {
+    const updatedExpense = await updateExpenseFirestore(expense);
+    return updatedExpense;
   }, []);
 
-  const handleDeleteExpense = useCallback((id: string) => {
-    deleteExpenseStorage(id);
-    dispatch({ type: "DELETE_EXPENSE", id });
+  const handleDeleteExpense = useCallback(async (id: string) => {
+    await deleteExpenseFirestore(id);
   }, []);
 
-  const handleAddRevenue = useCallback((revenue: Revenue) => {
-    addRevenueStorage(revenue);
-    dispatch({ type: "ADD_REVENUE", revenue });
+  // Revenue CRUD
+  const handleAddRevenue = useCallback(async (rev: Revenue) => {
+    const newRevenue = await addRevenueFirestore(rev);
+    return newRevenue;
   }, []);
 
-  const handleUpdateRevenue = useCallback((revenue: Revenue) => {
-    updateRevenueStorage(revenue);
-    dispatch({ type: "UPDATE_REVENUE", revenue });
+  const handleUpdateRevenue = useCallback(async (rev: Revenue) => {
+    const updatedRevenue = await updateRevenueFirestore(rev);
+    return updatedRevenue;
   }, []);
 
-  const handleDeleteRevenue = useCallback((id: string) => {
-    deleteRevenueStorage(id);
-    dispatch({ type: "DELETE_REVENUE", id });
+  const handleDeleteRevenue = useCallback(async (id: string) => {
+    await deleteRevenueFirestore(id);
+  }, []);
+
+  // Settings
+  const handleSettingsChange = useCallback((newSettings: AppSettings) => {
+    setSettings(newSettings);
   }, []);
 
   // Render current tab content
   const renderTabContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <Dashboard expenses={state.expenses} revenue={state.revenue} />;
+        return <Dashboard expenses={expenses} revenue={revenue} isLoading={!isHydrated} />;
       case "expenses":
         return (
           <ExpenseManager
-            expenses={state.expenses}
+            expenses={expenses}
             onAdd={handleAddExpense}
             onUpdate={handleUpdateExpense}
             onDelete={handleDeleteExpense}
@@ -144,7 +140,7 @@ export default function Home() {
       case "revenue":
         return (
           <RevenueManager
-            revenue={state.revenue}
+            revenue={revenue}
             onAdd={handleAddRevenue}
             onUpdate={handleUpdateRevenue}
             onDelete={handleDeleteRevenue}
@@ -152,26 +148,35 @@ export default function Home() {
         );
       case "ai-assistant":
         return (
-          <AIAssistant expenses={state.expenses} revenue={state.revenue} />
+          <AIAssistant
+            expenses={expenses}
+            revenue={revenue}
+            settings={settings}
+            onSettingsChange={handleSettingsChange}
+          />
         );
       case "insights":
         return (
-          <InsightsPanel expenses={state.expenses} revenue={state.revenue} />
+          <InsightsPanel
+            expenses={expenses}
+            revenue={revenue}
+            settings={settings}
+          />
         );
       default:
-        return <Dashboard expenses={state.expenses} revenue={state.revenue} />;
+        return <Dashboard expenses={expenses} revenue={revenue} isLoading={!isHydrated} />;
     }
   };
 
   // Show loading while hydrating
-  if (!state.isHydrated) {
+  if (!isHydrated) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="text-4xl mb-4">💛</div>
           <h1 className="text-2xl font-bold text-gold mb-2">#AS KHUSHBOO</h1>
           <p className="text-muted-foreground text-sm">
-            Loading your finances...
+            Connecting to Firebase...
           </p>
         </div>
       </div>
@@ -186,6 +191,7 @@ export default function Home() {
         onTabChange={setActiveTab}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        isConnected={isFirebaseConnected}
       />
 
       {/* Main content */}
@@ -220,7 +226,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground">
-                {state.expenses.length} expenses • {state.revenue.length} revenue
+                {expenses.length} expenses &bull; {revenue.length} revenue
                 entries
               </span>
             </div>

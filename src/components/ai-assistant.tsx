@@ -6,8 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Bot, User, Sparkles, Loader2 } from "lucide-react";
-import { Expense, Revenue } from "@/lib/types";
+import { Send, Bot, User, Sparkles, Loader2, Key } from "lucide-react";
+import { Expense, Revenue, AppSettings } from "@/lib/types";
+import AISettings from "./ai-settings";
 
 interface Message {
   id: string;
@@ -19,6 +20,8 @@ interface Message {
 interface AIAssistantProps {
   expenses: Expense[];
   revenue: Revenue[];
+  settings: AppSettings;
+  onSettingsChange: (settings: AppSettings) => void;
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -33,12 +36,16 @@ const SUGGESTED_QUESTIONS = [
 export default function AIAssistant({
   expenses,
   revenue,
+  settings,
+  onSettingsChange,
 }: AIAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isConfigured = !!(settings.aiApiKey && settings.aiApiKey.length > 0);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -72,6 +79,10 @@ export default function AIAssistant({
             role: m.role,
             content: m.content,
           })),
+          apiKey: settings.aiApiKey || "",
+          provider: settings.aiProvider || "gemini",
+          modelName: settings.aiModelName || "gemini-2.0-flash",
+          customEndpoint: settings.aiCustomEndpoint || "",
         }),
       });
 
@@ -89,7 +100,7 @@ export default function AIAssistant({
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
+    } catch {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -111,13 +122,47 @@ export default function AIAssistant({
 
   return (
     <div className="space-y-4 tab-content-enter h-full flex flex-col">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-white">AI Assistant</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Ask anything about your #AS KHUSHBOO finances 💛
-        </p>
-      </div>
+      {/* AI Settings panel */}
+      <AISettings settings={settings} onSettingsChange={onSettingsChange} />
+
+      {/* Not configured prompt */}
+      {!isConfigured && (
+        <Card className="bg-[#111111] border-gold/20">
+          <CardContent className="p-6 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="p-3 rounded-full bg-gold/10">
+                <Key size={28} className="text-gold" />
+              </div>
+              <h3 className="text-white font-semibold text-lg">
+                Setup AI Assistant
+              </h3>
+              <p className="text-muted-foreground text-sm max-w-md">
+                To use the AI assistant, configure your API key in the settings panel above. 
+                You can use Google Gemini (free), OpenAI, or a custom endpoint. 
+                Without a key, basic responses will be generated from your data.
+              </p>
+              <div className="flex flex-col items-start gap-2 text-left mt-2">
+                <p className="text-gold text-xs font-semibold">Quick Setup:</p>
+                <ol className="text-muted-foreground text-xs space-y-1 list-decimal list-inside">
+                  <li>Get a free API key from{" "}
+                    <a
+                      href="https://aistudio.google.com/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gold hover:text-gold-light underline"
+                    >
+                      Google AI Studio
+                    </a>
+                  </li>
+                  <li>Click the AI Settings panel above</li>
+                  <li>Paste your key, select &quot;Google Gemini&quot;</li>
+                  <li>Click &quot;Test Connection&quot; then &quot;Save Settings&quot;</li>
+                </ol>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Chat area */}
       <Card className="bg-[#111111] border-gold/20 flex-1 flex flex-col min-h-[500px]">

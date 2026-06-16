@@ -9,7 +9,17 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, Edit2, Trash2, Sparkles } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Sparkles, Loader2 } from "lucide-react";
 import {
   Expense,
   ExpenseCategory,
@@ -45,9 +55,9 @@ const formatPKR = (amount: number) =>
 
 interface ExpenseManagerProps {
   expenses: Expense[];
-  onAdd: (expense: Expense) => void;
-  onUpdate: (expense: Expense) => void;
-  onDelete: (id: string) => void;
+  onAdd: (expense: Expense) => Promise<Expense>;
+  onUpdate: (expense: Expense) => Promise<Expense>;
+  onDelete: (id: string) => Promise<void>;
 }
 
 export default function ExpenseManager({
@@ -60,6 +70,8 @@ export default function ExpenseManager({
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // Form state
   const [formDate, setFormDate] = useState(
@@ -112,37 +124,52 @@ export default function ExpenseManager({
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formDescription.trim() || !formAmount || Number(formAmount) <= 0) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    const expense: Expense = {
-      id: editingExpense?.id || Date.now().toString(),
-      date: formDate,
-      category: formCategory,
-      description: formDescription.trim(),
-      amount: Number(formAmount),
-      paymentMethod: formPaymentMethod,
-      notes: formNotes,
-    };
+    setIsSubmitting(true);
 
-    if (editingExpense) {
-      onUpdate(expense);
-      toast.success("Expense updated successfully 💛");
-    } else {
-      onAdd(expense);
-      toast.success("Expense added successfully 💛");
+    try {
+      const expense: Expense = {
+        id: editingExpense?.id || Date.now().toString(),
+        date: formDate,
+        category: formCategory,
+        description: formDescription.trim(),
+        amount: Number(formAmount),
+        paymentMethod: formPaymentMethod,
+        notes: formNotes,
+      };
+
+      if (editingExpense) {
+        await onUpdate(expense);
+        toast.success("Expense updated successfully 💛");
+      } else {
+        await onAdd(expense);
+        toast.success("Expense added successfully 💛");
+      }
+
+      setIsDialogOpen(false);
+      resetForm();
+    } catch {
+      toast.error("Failed to save expense. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsDialogOpen(false);
-    resetForm();
   };
 
-  const handleDelete = (id: string) => {
-    onDelete(id);
-    toast.success("Expense deleted");
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await onDelete(deleteId);
+      toast.success("Expense deleted");
+    } catch {
+      toast.error("Failed to delete expense. Please try again.");
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   // Filtered expenses
@@ -309,7 +336,7 @@ export default function ExpenseManager({
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleDelete(expense.id)}
+                              onClick={() => setDeleteId(expense.id)}
                               className="text-muted-foreground hover:text-danger h-8 w-8"
                             >
                               <Trash2 size={14} />
@@ -458,19 +485,42 @@ export default function ExpenseManager({
             <Button
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
+              disabled={isSubmitting}
               className="border-gold/30 text-muted-foreground hover:text-white"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
+              disabled={isSubmitting}
               className="bg-gold hover:bg-gold-dark text-black font-semibold"
             >
+              {isSubmitting ? (
+                <Loader2 size={14} className="animate-spin mr-2" />
+              ) : null}
               {editingExpense ? "Update" : "Add Expense"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent className="bg-[#111111] border-gold/30">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">Delete Expense?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This action cannot be undone. The expense will be permanently deleted from Firebase.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-gold/30 text-muted-foreground">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-danger hover:bg-danger/90 text-white">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

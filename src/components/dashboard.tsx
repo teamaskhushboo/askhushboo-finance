@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Wallet,
   TrendingUp,
@@ -30,6 +31,7 @@ import { TOTAL_INVESTMENT } from "@/lib/data";
 interface DashboardProps {
   expenses: Expense[];
   revenue: Revenue[];
+  isLoading: boolean;
 }
 
 const formatPKR = (amount: number) =>
@@ -51,7 +53,7 @@ function ChartTooltip({
       <p className="text-gold font-semibold text-sm mb-1">{label}</p>
       {payload.map((entry, idx) => (
         <p key={idx} className="text-white text-sm">
-          <span style={{ color: entry.color }}>●</span>{" "}
+          <span style={{ color: entry.color }}>&#9679;</span>{" "}
           {entry.name}: Rs {entry.value.toLocaleString()}
         </p>
       ))}
@@ -59,7 +61,7 @@ function ChartTooltip({
   );
 }
 
-export default function Dashboard({ expenses, revenue }: DashboardProps) {
+export default function Dashboard({ expenses, revenue, isLoading }: DashboardProps) {
   const totalExpenses = useMemo(
     () => expenses.reduce((sum, e) => sum + e.amount, 0),
     [expenses]
@@ -87,7 +89,7 @@ export default function Dashboard({ expenses, revenue }: DashboardProps) {
   const monthlyData = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e) => {
-      const month = e.date.substring(0, 7); // YYYY-MM
+      const month = e.date.substring(0, 7);
       const label = new Date(month + "-01").toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
@@ -99,7 +101,7 @@ export default function Dashboard({ expenses, revenue }: DashboardProps) {
       .sort((a, b) => a.month.localeCompare(b.month));
   }, [expenses]);
 
-  // Recent activity (combine expenses and revenue, last 5)
+  // Recent activity
   const recentActivity = useMemo(() => {
     const allItems = [
       ...expenses.map((e) => ({
@@ -156,6 +158,33 @@ export default function Dashboard({ expenses, revenue }: DashboardProps) {
       borderColor: "border-gold/30",
     },
   ];
+
+  // Loading skeletons
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="bg-[#111111] border-gold/20">
+              <CardContent className="p-5 space-y-3">
+                <Skeleton className="h-4 w-24 bg-[#1A1A1A]" />
+                <Skeleton className="h-8 w-32 bg-[#1A1A1A]" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Card key={i} className="bg-[#111111] border-gold/20">
+              <CardContent className="p-5">
+                <Skeleton className="h-[280px] bg-[#1A1A1A]" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 tab-content-enter">

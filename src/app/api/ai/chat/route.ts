@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const SYSTEM_PROMPT = `You are the AI Finance Assistant for #AS KHUSHBOO, a Pakistani luxury fragrance brand. Your name is "KHUSHBOO AI".
+
+BRAND INFO:
+- Brand: #AS KHUSHBOO (the # is MANDATORY)
+- Tagline: "Khushboo That Speaks for YOU"
+- 6 Perfumes: Shahkaar (Men), Meherban (Men), Gulnaz (Women), Noor-e-Jahan (Women), Rooh (Unisex), Rawaan (Unisex)
+- Founded by Abdullah, Team: Ashir (Details), Ahsan (Product Manager)
+- Currency: PKR (Pakistani Rupees)
+- Brand Colors: Royal Gold and Deep Black
+
+STYLE: Warm mix of Roman Urdu and English. Use "Bhai", "Yaar" naturally. Be helpful and financially smart. Use 💛 occasionally. Keep responses concise but informative.`;
+
 export async function POST(req: NextRequest) {
   let message = "";
   let expenses: Array<{ category: string; amount: number; date: string; description: string }> = [];
   let revenue: Array<{ amount: number; date: string; source: string; description: string; perfume?: string }> = [];
   let history: Array<{ role: string; content: string }> = [];
+  let apiKey = "";
+  let provider = "gemini";
+  let modelName = "gemini-2.0-flash";
+  let customEndpoint = "";
 
   try {
     const body = await req.json();
@@ -12,6 +28,10 @@ export async function POST(req: NextRequest) {
     expenses = body.expenses || [];
     revenue = body.revenue || [];
     history = body.history || [];
+    apiKey = body.apiKey || "";
+    provider = body.provider || "gemini";
+    modelName = body.modelName || "gemini-2.0-flash";
+    customEndpoint = body.customEndpoint || "";
 
     if (!message) {
       return NextResponse.json(
@@ -76,128 +96,170 @@ ${revenue
   .join("\n") || "No revenue entries yet"}
 `;
 
-    const systemPrompt = `You are the AI Finance Assistant for #AS KHUSHBOO, a Pakistani luxury fragrance brand. Your name is "KHUSHBOO AI".
+    const fullSystemPrompt = `${SYSTEM_PROMPT}\n\n${financialSummary}\n\nAnswer the user's question based on the financial data provided. If asked about something not in the data, say so honestly. Always reference specific numbers when possible.`;
 
-IMPORTANT BRAND INFO:
-- Brand: #AS KHUSHBOO (the # is MANDATORY)
-- Tagline: "Khushboo That Speaks for YOU"
-- 6 Perfumes: Shahkaar (Men), Meherban (Men), Gulnaz (Women), Noor-e-Jahan (Women), Rooh (Unisex), Rawaan (Unisex)
-- Founded by Abdullah, Team: Ashir (Details), Ahsan (Product Manager)
-- Currency: PKR (Pakistani Rupees)
-- Brand Colors: Royal Gold and Deep Black
+    // If user provided an API key, use their preferred provider
+    if (apiKey) {
+      try {
+        const aiResponse = await callAIProvider(provider, apiKey, modelName, customEndpoint, fullSystemPrompt, history, message);
+        return NextResponse.json({ response: aiResponse });
+      } catch (aiError) {
+        console.error("Custom AI provider error:", aiError);
+        // Fall through to z-ai-web-dev-sdk fallback
+      }
+    }
 
-COMMUNICATION STYLE:
-- Speak in a warm mix of Roman Urdu and English (like a Pakistani business advisor)
-- Use phrases like "Bhai", "Yaar", "Dekhein", "Suno", etc. naturally
-- Be helpful, encouraging, and financially smart
-- Use 💛 emoji occasionally as brand signature
-- Keep responses concise but informative
-- When giving amounts, always use PKR format
+    // Fallback: use z-ai-web-dev-sdk
+    try {
+      const aiMessages = [
+        {
+          role: "assistant" as const,
+          content: fullSystemPrompt,
+        },
+        ...history.map((h: { role: string; content: string }) => ({
+          role: (h.role === "user" ? "user" : "assistant") as "user" | "assistant",
+          content: h.content,
+        })),
+        {
+          role: "user" as const,
+          content: message,
+        },
+      ];
 
-${financialSummary}
+      const ZAI = (await import("z-ai-web-dev-sdk")).default;
+      const zai = await ZAI.create();
+      const completion = await zai.chat.completions.create({
+        messages: aiMessages,
+        thinking: { type: "disabled" },
+      });
 
-Answer the user's question based on the financial data provided. If asked about something not in the data, say so honestly. Always reference specific numbers when possible.`;
+      const aiResponse = completion.choices?.[0]?.message?.content;
 
-    // Build messages for the AI
-    const aiMessages = [
-      {
-        role: "assistant" as const,
-        content: systemPrompt,
-      },
-      ...history.map((h: { role: string; content: string }) => ({
-        role: (h.role === "user" ? "user" : "assistant") as "user" | "assistant",
-        content: h.content,
+      if (aiResponse) {
+        return NextResponse.json({ response: aiResponse });
+      }
+
+      throw new Error("No response from AI");
+    } catch {
+      // Final fallback: generate response from data
+      return NextResponse.json({ response: generateFallbackResponse(message, expenses, revenue, totalExpenses, totalRevenue, categoryBreakdown) });
+    }
+  } catch (error) {
+    console.error("AI Chat error:", error);
+    return NextResponse.json({
+      response: "Sorry, AI service temporarily unavailable. Please try again later. 💛",
+    });
+  }
+}
+
+async function callAIProvider(
+  provider: string,
+  apiKey: string,
+  modelName: string,
+  customEndpoint: string,
+  systemPrompt: string,
+  history: Array<{ role: string; content: string }>,
+  message: string
+): Promise<string> {
+  if (provider === "gemini") {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    const contents = [
+      ...history.map((h) => ({
+        role: h.role === "user" ? "user" : "model",
+        parts: [{ text: h.content }],
       })),
       {
-        role: "user" as const,
-        content: message,
+        role: "user",
+        parts: [{ text: message }],
       },
     ];
 
-    // Use z-ai-web-dev-sdk correctly
-    const ZAI = (await import("z-ai-web-dev-sdk")).default;
-    const zai = await ZAI.create();
-    const completion = await zai.chat.completions.create({
-      messages: aiMessages,
-      thinking: { type: "disabled" },
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+      }),
     });
 
-    const aiResponse = completion.choices?.[0]?.message?.content;
-
-    if (aiResponse) {
-      return NextResponse.json({ response: aiResponse });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API error: ${errText}`);
     }
 
-    throw new Error("No response from AI");
-  } catch (error) {
-    console.error("AI Chat error:", error);
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("No response from Gemini");
+    return text;
+  }
 
-    // Fallback: generate a basic response based on data
-    try {
-      const totalExpenses = expenses.reduce(
-        (sum: number, e: { amount: number }) => sum + e.amount,
-        0
-      );
-      const totalRevenue = revenue.reduce(
-        (sum: number, r: { amount: number }) => sum + r.amount,
-        0
-      );
-      const formatPKR = (n: number) => `Rs ${n.toLocaleString("en-PK")}`;
+  if (provider === "openai" || provider === "custom") {
+    const baseUrl = provider === "openai"
+      ? "https://api.openai.com/v1/chat/completions"
+      : customEndpoint;
 
-      const lowerMsg = message.toLowerCase();
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...history.map((h) => ({
+        role: h.role as "user" | "assistant",
+        content: h.content,
+      })),
+      { role: "user", content: message },
+    ];
 
-      let fallbackResponse = "";
+    const response = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages,
+        max_tokens: 1024,
+      }),
+    });
 
-      if (
-        lowerMsg.includes("packaging") &&
-        (lowerMsg.includes("spend") || lowerMsg.includes("kitna"))
-      ) {
-        const packagingTotal = expenses
-          .filter((e: { category: string }) => e.category === "Packaging")
-          .reduce((sum: number, e: { amount: number }) => sum + e.amount, 0);
-        fallbackResponse = `Packaging par total ${formatPKR(packagingTotal)} spend hua hai. Yeh total expenses ka ${totalExpenses > 0 ? ((packagingTotal / totalExpenses) * 100).toFixed(1) : 0}% hai. Packaging mein bottles aur boxes sabse zyada expensive hain 💛`;
-      } else if (
-        lowerMsg.includes("revenue") ||
-        lowerMsg.includes("total") ||
-        lowerMsg.includes("income")
-      ) {
-        fallbackResponse = `Total revenue abhi ${formatPKR(totalRevenue)} hai, aur total expenses ${formatPKR(totalExpenses)} hain. Net position: ${formatPKR(totalRevenue - totalExpenses)} 💛`;
-      } else if (
-        lowerMsg.includes("profit") ||
-        lowerMsg.includes("loss")
-      ) {
-        const profit = totalRevenue - totalExpenses;
-        fallbackResponse = `Current net position ${formatPKR(Math.abs(profit))} ${profit >= 0 ? "profit mein" : "loss mein"} hai. ${profit >= 0 ? "Shabash, keep it up! 💛" : "Mehnat karni paregi, but #AS KHUSHBOO will shine! 💛"}`;
-      } else if (
-        lowerMsg.includes("perfume") ||
-        lowerMsg.includes("kaunsa") ||
-        lowerMsg.includes("which")
-      ) {
-        const categoryBreakdown: Record<string, number> = {};
-        expenses.forEach((e: { category: string; amount: number }) => {
-          categoryBreakdown[e.category] =
-            (categoryBreakdown[e.category] || 0) + e.amount;
-        });
-        const topCategory = Object.entries(categoryBreakdown).sort(
-          ([, a], [, b]) => b - a
-        )[0];
-        fallbackResponse = `Aapke 6 perfumes hain: Shahkaar (Men), Meherban (Men), Gulnaz (Women), Noor-e-Jahan (Women), Rooh (Unisex), Rawaan (Unisex). Sabse zyada expense ${topCategory ? `${topCategory[0]} (${formatPKR(topCategory[1])})` : "N/A"} par hai. Sales data add karein taake profitable perfume pata chal sake! 💛`;
-      } else if (
-        lowerMsg.includes("spend") ||
-        lowerMsg.includes("kharcha") ||
-        lowerMsg.includes("expense")
-      ) {
-        fallbackResponse = `Total expenses ${formatPKR(totalExpenses)} hain (${expenses.length} items). Expenses add karte rahein taake better analysis ho sake! 💛`;
-      } else {
-        fallbackResponse = `Bhai, aapke total expenses ${formatPKR(totalExpenses)} hain aur revenue ${formatPKR(totalRevenue)} hai. Koi specific sawal poochein, jaise "Kitna spend hua packaging par?" ya "Total revenue kya hai?" 💛`;
-      }
-
-      return NextResponse.json({ response: fallbackResponse });
-    } catch {
-      return NextResponse.json({
-        response:
-          "Sorry, AI service temporarily unavailable. Please try again later. 💛",
-      });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`OpenAI API error: ${errText}`);
     }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error("No response from OpenAI");
+    return text;
+  }
+
+  throw new Error(`Unknown provider: ${provider}`);
+}
+
+function generateFallbackResponse(
+  message: string,
+  expenses: Array<{ category: string; amount: number; description: string }>,
+  revenue: Array<{ amount: number; source: string; perfume?: string }>,
+  totalExpenses: number,
+  totalRevenue: number,
+  categoryBreakdown: Record<string, number>
+): string {
+  const formatPKR = (n: number) => `Rs ${n.toLocaleString("en-PK")}`;
+  const lowerMsg = message.toLowerCase();
+
+  if (lowerMsg.includes("packaging") && (lowerMsg.includes("spend") || lowerMsg.includes("kitna"))) {
+    const packagingTotal = expenses.filter((e) => e.category === "Packaging").reduce((sum, e) => sum + e.amount, 0);
+    return `Packaging par total ${formatPKR(packagingTotal)} spend hua hai. Yeh total expenses ka ${totalExpenses > 0 ? ((packagingTotal / totalExpenses) * 100).toFixed(1) : 0}% hai. Packaging mein bottles aur boxes sabse zyada expensive hain 💛`;
+  } else if (lowerMsg.includes("revenue") || lowerMsg.includes("total") || lowerMsg.includes("income")) {
+    return `Total revenue abhi ${formatPKR(totalRevenue)} hai, aur total expenses ${formatPKR(totalExpenses)} hain. Net position: ${formatPKR(totalRevenue - totalExpenses)} 💛`;
+  } else if (lowerMsg.includes("profit") || lowerMsg.includes("loss")) {
+    const profit = totalRevenue - totalExpenses;
+    return `Current net position ${formatPKR(Math.abs(profit))} ${profit >= 0 ? "profit mein" : "loss mein"} hai. ${profit >= 0 ? "Shabash, keep it up! 💛" : "Mehnat karni paregi, but #AS KHUSHBOO will shine! 💛"}`;
+  } else if (lowerMsg.includes("perfume") || lowerMsg.includes("kaunsa") || lowerMsg.includes("which")) {
+    const topCategory = Object.entries(categoryBreakdown).sort(([, a], [, b]) => b - a)[0];
+    return `Aapke 6 perfumes hain: Shahkaar (Men), Meherban (Men), Gulnaz (Women), Noor-e-Jahan (Women), Rooh (Unisex), Rawaan (Unisex). Sabse zyada expense ${topCategory ? `${topCategory[0]} (${formatPKR(topCategory[1])})` : "N/A"} par hai. Sales data add karein taake profitable perfume pata chal sake! 💛`;
+  } else if (lowerMsg.includes("spend") || lowerMsg.includes("kharcha") || lowerMsg.includes("expense")) {
+    return `Total expenses ${formatPKR(totalExpenses)} hain (${expenses.length} items). Expenses add karte rahein taake better analysis ho sake! 💛`;
+  } else {
+    return `Bhai, aapke total expenses ${formatPKR(totalExpenses)} hain aur revenue ${formatPKR(totalRevenue)} hai. Koi specific sawal poochein, jaise "Kitna spend hua packaging par?" ya "Total revenue kya hai?" 💛`;
   }
 }

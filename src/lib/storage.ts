@@ -1,107 +1,147 @@
-import { Expense, Revenue } from "./types";
+import {
+  db,
+  collection,
+  doc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  setDoc,
+  getDoc,
+  serverTimestamp,
+} from "./firebase";
+import { Expense, Revenue, AppSettings } from "./types";
 import { PRELOADED_EXPENSES } from "./data";
 
-const STORAGE_KEY = "askhushboo_finance";
+const EXPENSES_COLLECTION = "finance_expenses";
+const REVENUE_COLLECTION = "finance_revenue";
+const SETTINGS_DOC = "main";
+const SETTINGS_COLLECTION = "finance_settings";
 
-interface FinanceData {
-  expenses: Expense[];
-  revenue: Revenue[];
+// ========== Expenses ==========
+
+export async function getExpenses(): Promise<Expense[]> {
+  const q = query(collection(db, EXPENSES_COLLECTION), orderBy("date", "desc"));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Expense));
 }
 
-function getDefaultData(): FinanceData {
+export async function addExpense(expense: Expense): Promise<Expense> {
+  const { id, ...data } = expense;
+  const docRef = await addDoc(collection(db, EXPENSES_COLLECTION), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
+  return { ...expense, id: docRef.id };
+}
+
+export async function updateExpense(expense: Expense): Promise<Expense> {
+  const { id, ...data } = expense;
+  const docRef = doc(db, EXPENSES_COLLECTION, id);
+  await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() });
+  return expense;
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+  const docRef = doc(db, EXPENSES_COLLECTION, id);
+  await deleteDoc(docRef);
+}
+
+// ========== Revenue ==========
+
+export async function getRevenue(): Promise<Revenue[]> {
+  const q = query(collection(db, REVENUE_COLLECTION), orderBy("date", "desc"));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Revenue));
+}
+
+export async function addRevenue(revenue: Revenue): Promise<Revenue> {
+  const { id, ...data } = revenue;
+  const docRef = await addDoc(collection(db, REVENUE_COLLECTION), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
+  return { ...revenue, id: docRef.id };
+}
+
+export async function updateRevenue(revenue: Revenue): Promise<Revenue> {
+  const { id, ...data } = revenue;
+  const docRef = doc(db, REVENUE_COLLECTION, id);
+  await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() });
+  return revenue;
+}
+
+export async function deleteRevenue(id: string): Promise<void> {
+  const docRef = doc(db, REVENUE_COLLECTION, id);
+  await deleteDoc(docRef);
+}
+
+// ========== Settings ==========
+
+export async function getSettings(): Promise<AppSettings> {
+  const docRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC);
+  const snapshot = await getDoc(docRef);
+  if (snapshot.exists()) {
+    return { id: snapshot.id, ...snapshot.data() } as AppSettings;
+  }
   return {
-    expenses: PRELOADED_EXPENSES,
-    revenue: [],
+    id: SETTINGS_DOC,
+    aiApiKey: "",
+    aiProvider: "gemini",
+    aiModelName: "gemini-2.0-flash",
+    aiCustomEndpoint: "",
+    updatedAt: null,
   };
 }
 
-export function loadData(): FinanceData {
-  if (typeof window === "undefined") return getDefaultData();
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) {
-      const defaults = getDefaultData();
-      saveData(defaults);
-      return defaults;
-    }
-    return JSON.parse(stored);
-  } catch {
-    const defaults = getDefaultData();
-    saveData(defaults);
-    return defaults;
+export async function saveSettings(settings: AppSettings): Promise<void> {
+  const docRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC);
+  const { id, ...data } = settings;
+  await setDoc(docRef, { ...data, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+// ========== Seed Data ==========
+
+export async function seedInitialData(): Promise<void> {
+  // Check if expenses already exist
+  const snapshot = await getDocs(collection(db, EXPENSES_COLLECTION));
+  if (!snapshot.empty) return; // Already seeded
+
+  // Seed the 39 preloaded expenses
+  for (const expense of PRELOADED_EXPENSES) {
+    const { id, ...data } = expense;
+    await addDoc(collection(db, EXPENSES_COLLECTION), {
+      ...data,
+      createdAt: serverTimestamp(),
+    });
   }
 }
 
-export function saveData(data: FinanceData): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.error("Failed to save data to localStorage", e);
-  }
+// ========== Real-time Listeners ==========
+
+export function onExpensesChange(callback: (expenses: Expense[]) => void): () => void {
+  const q = query(collection(db, EXPENSES_COLLECTION), orderBy("date", "desc"));
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const expenses = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Expense));
+    callback(expenses);
+  });
+  return unsubscribe;
 }
 
-export function getExpenses(): Expense[] {
-  return loadData().expenses;
+export function onRevenueChange(callback: (revenue: Revenue[]) => void): () => void {
+  const q = query(collection(db, REVENUE_COLLECTION), orderBy("date", "desc"));
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const revenue = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Revenue));
+    callback(revenue);
+  });
+  return unsubscribe;
 }
 
-export function saveExpenses(expenses: Expense[]): void {
-  const data = loadData();
-  data.expenses = expenses;
-  saveData(data);
-}
+// ========== Auto-categorization ==========
 
-export function addExpense(expense: Expense): void {
-  const data = loadData();
-  data.expenses.unshift(expense);
-  saveData(data);
-}
-
-export function updateExpense(updated: Expense): void {
-  const data = loadData();
-  data.expenses = data.expenses.map((e) =>
-    e.id === updated.id ? updated : e
-  );
-  saveData(data);
-}
-
-export function deleteExpense(id: string): void {
-  const data = loadData();
-  data.expenses = data.expenses.filter((e) => e.id !== id);
-  saveData(data);
-}
-
-export function getRevenue(): Revenue[] {
-  return loadData().revenue;
-}
-
-export function saveRevenue(revenue: Revenue[]): void {
-  const data = loadData();
-  data.revenue = revenue;
-  saveData(data);
-}
-
-export function addRevenue(revenue: Revenue): void {
-  const data = loadData();
-  data.revenue.unshift(revenue);
-  saveData(data);
-}
-
-export function updateRevenue(updated: Revenue): void {
-  const data = loadData();
-  data.revenue = data.revenue.map((r) =>
-    r.id === updated.id ? updated : r
-  );
-  saveData(data);
-}
-
-export function deleteRevenue(id: string): void {
-  const data = loadData();
-  data.revenue = data.revenue.filter((r) => r.id !== id);
-  saveData(data);
-}
-
-// Auto-categorization based on keywords
 const categoryKeywords: Record<string, string[]> = {
   Packaging: [
     "box", "bottle", "bag", "wrap", "tape", "tag", "card", "pack",
@@ -114,7 +154,7 @@ const categoryKeywords: Record<string, string[]> = {
     "lattafa", "charlie", "gucci", "burberry", "mont blanc",
   ],
   "Printing & DTF": [
-    "print", "dtf", "sticker", "flyer", "design", "card", "banner",
+    "print", "dtf", "sticker", "flyer", "design", "banner",
     "poster", "label", "story card", "narrative",
   ],
   Equipment: [
@@ -145,7 +185,7 @@ export function suggestCategory(description: string): string | null {
     let score = 0;
     for (const keyword of keywords) {
       if (lower.includes(keyword)) {
-        score += keyword.length; // Longer matches are more specific
+        score += keyword.length;
       }
     }
     if (score > bestScore) {

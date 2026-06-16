@@ -1,13 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const SYSTEM_PROMPT = `You are a financial AI advisor for #AS KHUSHBOO, a Pakistani luxury fragrance brand.
+
+Brand: #AS KHUSHBOO (the # is MANDATORY)
+Tagline: "Khushboo That Speaks for YOU"
+6 Perfumes: Shahkaar, Meherban (Men), Gulnaz, Noor-e-Jahan (Women), Rooh, Rawaan (Unisex)
+Currency: PKR
+
+STYLE: Warm mix of Roman Urdu and English. Use "Bhai", "Yaar" naturally. Be helpful and financially smart. Use 💛 occasionally.
+
+Generate 5-7 smart, actionable insights. Be specific with numbers. Format each insight on a new line with a relevant emoji prefix. Cover:
+1. Spending pattern analysis (kahan zyada paisa ja raha hai)
+2. Savings opportunities (kahan bachat ho sakti hai)
+3. Revenue optimization (sales kaise badhayein)
+4. Risk alerts (kya khatarnak hai)
+5. Growth predictions (agay kya expect karein)
+6. Actionable recommendations (aaj kya karein)
+
+Keep the tone warm, encouraging, and business-smart. Use 💛 occasionally.`;
+
 export async function POST(req: NextRequest) {
   let expenses: Array<{ category: string; amount: number; description: string }> = [];
   let revenue: Array<{ amount: number; perfume?: string; source: string; quantity?: number }> = [];
+  let apiKey = "";
+  let provider = "gemini";
+  let modelName = "gemini-2.0-flash";
+  let customEndpoint = "";
 
   try {
     const body = await req.json();
     expenses = body.expenses || [];
     revenue = body.revenue || [];
+    apiKey = body.apiKey || "";
+    provider = body.provider || "gemini";
+    modelName = body.modelName || "gemini-2.0-flash";
+    customEndpoint = body.customEndpoint || "";
 
     const totalExpenses = expenses.reduce(
       (sum: number, e: { amount: number }) => sum + e.amount,
@@ -52,87 +79,141 @@ ${Object.entries(perfumeRevenue)
   .join("\n") || "No revenue data yet"}
 `;
 
-    const systemPrompt = `You are a financial AI advisor for #AS KHUSHBOO, a Pakistani luxury fragrance brand. Generate deep, actionable insights about their financial data.
+    const fullSystemPrompt = `${SYSTEM_PROMPT}\n\nFINANCIAL DATA:\n${financialData}`;
 
-Brand: #AS KHUSHBOO
-Tagline: "Khushboo That Speaks for YOU"
-6 Perfumes: Shahkaar, Meherban (Men), Gulnaz, Noor-e-Jahan (Women), Rooh, Rawaan (Unisex)
-Currency: PKR
+    // If user provided an API key, use their preferred provider
+    if (apiKey) {
+      try {
+        const aiResponse = await callAIProvider(provider, apiKey, modelName, customEndpoint, fullSystemPrompt, [], "Please analyze our financial data and give detailed insights for #AS KHUSHBOO.");
+        return NextResponse.json({ insights: aiResponse });
+      } catch (aiError) {
+        console.error("Custom AI provider error:", aiError);
+        // Fall through to z-ai-web-dev-sdk fallback
+      }
+    }
 
-FINANCIAL DATA:
-${financialData}
+    // Fallback: use z-ai-web-dev-sdk
+    try {
+      const messages = [
+        {
+          role: "assistant" as const,
+          content: fullSystemPrompt,
+        },
+        {
+          role: "user" as const,
+          content: "Please analyze our financial data and give detailed insights for #AS KHUSHBOO.",
+        },
+      ];
 
-Generate 5-7 smart, actionable insights in Roman Urdu + English mix. Be specific with numbers. Format each insight on a new line with a relevant emoji prefix. Cover:
-1. Spending pattern analysis (kahan zyada paisa ja raha hai)
-2. Savings opportunities (kahan bachat ho sakti hai)
-3. Revenue optimization (sales kaise badhayein)
-4. Risk alerts (kya khatarnak hai)
-5. Growth predictions (agay kya expect karein)
-6. Actionable recommendations (aaj kya karein)
+      const ZAI = (await import("z-ai-web-dev-sdk")).default;
+      const zai = await ZAI.create();
+      const completion = await zai.chat.completions.create({
+        messages,
+        thinking: { type: "disabled" },
+      });
 
-Keep the tone warm, encouraging, and business-smart. Use 💛 occasionally.`;
+      const aiResponse = completion.choices?.[0]?.message?.content;
 
-    const messages = [
+      if (aiResponse) {
+        return NextResponse.json({ insights: aiResponse });
+      }
+
+      throw new Error("No AI response");
+    } catch {
+      // Final fallback: generate local insights
+      return NextResponse.json({
+        insights: generateLocalInsights(expenses, revenue, totalExpenses, totalRevenue, categoryBreakdown),
+      });
+    }
+  } catch (error) {
+    console.error("AI Insights error:", error);
+    return NextResponse.json({
+      insights: "AI insights temporarily unavailable. Please try again later. 💛",
+    });
+  }
+}
+
+async function callAIProvider(
+  provider: string,
+  apiKey: string,
+  modelName: string,
+  customEndpoint: string,
+  systemPrompt: string,
+  history: Array<{ role: string; content: string }>,
+  message: string
+): Promise<string> {
+  if (provider === "gemini") {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    const contents = [
+      ...history.map((h) => ({
+        role: h.role === "user" ? "user" : "model",
+        parts: [{ text: h.content }],
+      })),
       {
-        role: "assistant" as const,
-        content: systemPrompt,
-      },
-      {
-        role: "user" as const,
-        content:
-          "Please analyze our financial data and give detailed insights for #AS KHUSHBOO.",
+        role: "user",
+        parts: [{ text: message }],
       },
     ];
 
-    // Use z-ai-web-dev-sdk correctly
-    const ZAI = (await import("z-ai-web-dev-sdk")).default;
-    const zai = await ZAI.create();
-    const completion = await zai.chat.completions.create({
-      messages,
-      thinking: { type: "disabled" },
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+      }),
     });
 
-    const aiResponse = completion.choices?.[0]?.message?.content;
-
-    if (aiResponse) {
-      return NextResponse.json({ insights: aiResponse });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API error: ${errText}`);
     }
 
-    throw new Error("No AI response");
-  } catch (error) {
-    console.error("AI Insights error:", error);
-
-    // Generate fallback insights locally
-    try {
-      const totalExpenses = expenses.reduce(
-        (sum: number, e: { amount: number }) => sum + e.amount,
-        0
-      );
-      const totalRevenue = revenue.reduce(
-        (sum: number, r: { amount: number }) => sum + r.amount,
-        0
-      );
-      const categoryBreakdown: Record<string, number> = {};
-      expenses.forEach((e: { category: string; amount: number }) => {
-        categoryBreakdown[e.category] =
-          (categoryBreakdown[e.category] || 0) + e.amount;
-      });
-
-      const insights = generateLocalInsights(
-        expenses,
-        revenue,
-        totalExpenses,
-        totalRevenue,
-        categoryBreakdown
-      );
-      return NextResponse.json({ insights });
-    } catch {
-      return NextResponse.json({
-        insights:
-          "AI insights temporarily unavailable. Please try again later. 💛",
-      });
-    }
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("No response from Gemini");
+    return text;
   }
+
+  if (provider === "openai" || provider === "custom") {
+    const baseUrl = provider === "openai"
+      ? "https://api.openai.com/v1/chat/completions"
+      : customEndpoint;
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...history.map((h) => ({
+        role: h.role as "user" | "assistant",
+        content: h.content,
+      })),
+      { role: "user", content: message },
+    ];
+
+    const response = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages,
+        max_tokens: 1024,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`OpenAI API error: ${errText}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error("No response from OpenAI");
+    return text;
+  }
+
+  throw new Error(`Unknown provider: ${provider}`);
 }
 
 function generateLocalInsights(
@@ -147,7 +228,6 @@ function generateLocalInsights(
 
   lines.push("📊 #AS KHUSHBOO Financial Insights\n");
 
-  // 1. Spending analysis
   const topCat = Object.entries(categoryBreakdown).sort(
     ([, a], [, b]) => b - a
   )[0];
@@ -158,7 +238,6 @@ function generateLocalInsights(
     );
   }
 
-  // 2. Revenue vs expenses
   const net = totalRevenue - totalExpenses;
   if (totalRevenue > 0) {
     if (net > 0) {
@@ -176,7 +255,6 @@ function generateLocalInsights(
     );
   }
 
-  // 3. Savings tip
   if (topCat) {
     const saving10 = topCat[1] * 0.1;
     lines.push(
@@ -184,7 +262,6 @@ function generateLocalInsights(
     );
   }
 
-  // 4. Packaging specific
   const packagingTotal = categoryBreakdown["Packaging"] || 0;
   if (packagingTotal > 0) {
     const packagingPct = ((packagingTotal / totalExpenses) * 100).toFixed(1);
@@ -193,7 +270,6 @@ function generateLocalInsights(
     );
   }
 
-  // 5. Perfume oils
   const oilsTotal = categoryBreakdown["Perfume Oils"] || 0;
   if (oilsTotal > 0) {
     lines.push(
@@ -201,7 +277,6 @@ function generateLocalInsights(
     );
   }
 
-  // 6. Marketing
   const marketingTotal = categoryBreakdown["Digital & Marketing"] || 0;
   if (marketingTotal > 0) {
     lines.push(
@@ -209,7 +284,6 @@ function generateLocalInsights(
     );
   }
 
-  // 7. Growth prediction
   if (totalRevenue > 0) {
     const avgRevenuePerEntry =
       revenue.length > 0 ? totalRevenue / revenue.length : 0;

@@ -17,8 +17,9 @@ import {
   Target,
   BarChart3,
   Sparkles,
+  Key,
 } from "lucide-react";
-import { Expense, Revenue, CHART_COLORS } from "@/lib/types";
+import { Expense, Revenue, AppSettings, CHART_COLORS } from "@/lib/types";
 import { TOTAL_INVESTMENT } from "@/lib/data";
 
 interface Insight {
@@ -31,6 +32,7 @@ interface Insight {
 interface InsightsPanelProps {
   expenses: Expense[];
   revenue: Revenue[];
+  settings: AppSettings;
 }
 
 const formatPKR = (amount: number) =>
@@ -39,10 +41,13 @@ const formatPKR = (amount: number) =>
 export default function InsightsPanel({
   expenses,
   revenue,
+  settings,
 }: InsightsPanelProps) {
   const [aiInsights, setAiInsights] = useState<string>("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const hasFetchedRef = useRef(false);
+
+  const isConfigured = !!(settings.aiApiKey && settings.aiApiKey.length > 0);
 
   // Computed analytics
   const totalExpenses = useMemo(
@@ -70,7 +75,7 @@ export default function InsightsPanel({
   }, [expenses, totalExpenses]);
 
   const perfumeRevenueBreakdown = useMemo(() => {
-    const map: Record<string, { amount: number; count: number }>= {};
+    const map: Record<string, { amount: number; count: number }> = {};
     revenue.forEach((r) => {
       const key = r.perfume || "Unspecified";
       if (!map[key]) map[key] = { amount: 0, count: 0 };
@@ -186,7 +191,14 @@ export default function InsightsPanel({
       const response = await fetch("/api/ai/insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expenses, revenue }),
+        body: JSON.stringify({
+          expenses,
+          revenue,
+          apiKey: settings.aiApiKey || "",
+          provider: settings.aiProvider || "gemini",
+          modelName: settings.aiModelName || "gemini-2.0-flash",
+          customEndpoint: settings.aiCustomEndpoint || "",
+        }),
       });
 
       if (!response.ok) throw new Error("Failed to fetch insights");
@@ -202,14 +214,14 @@ export default function InsightsPanel({
     } finally {
       setIsAiLoading(false);
     }
-  }, [expenses, revenue]);
+  }, [expenses, revenue, settings]);
 
   useEffect(() => {
-    // Auto-fetch AI insights on first load if there's data
-    if (expenses.length > 0 && !hasFetchedRef.current && !isAiLoading) {
+    // Auto-fetch AI insights on first load if there's data and API key is configured
+    if (expenses.length > 0 && !hasFetchedRef.current && !isAiLoading && isConfigured) {
       fetchAiInsights();
     }
-  }, [expenses.length, isAiLoading, fetchAiInsights]);
+  }, [expenses.length, isAiLoading, isConfigured, fetchAiInsights]);
 
   const getInsightIcon = (type: Insight["type"]) => {
     switch (type) {
@@ -245,18 +257,20 @@ export default function InsightsPanel({
             AI-powered analysis of your #AS KHUSHBOO finances 💛
           </p>
         </div>
-        <Button
-          onClick={fetchAiInsights}
-          disabled={isAiLoading}
-          className="bg-gold hover:bg-gold-dark text-black font-semibold gap-2"
-        >
-          {isAiLoading ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <RefreshCw size={16} />
-          )}
-          Refresh AI Insights
-        </Button>
+        {isConfigured && (
+          <Button
+            onClick={fetchAiInsights}
+            disabled={isAiLoading}
+            className="bg-gold hover:bg-gold-dark text-black font-semibold gap-2"
+          >
+            {isAiLoading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <RefreshCw size={16} />
+            )}
+            Refresh AI Insights
+          </Button>
+        )}
       </div>
 
       {/* Category spending breakdown */}
@@ -425,36 +439,62 @@ export default function InsightsPanel({
       </div>
 
       {/* AI Insights */}
-      <Card className="bg-[#111111] border-gold/20 gold-glow">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-white text-lg flex items-center gap-2">
-            <Sparkles size={18} className="text-gold" />
-            AI-Powered Deep Insights
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isAiLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 size={24} className="text-gold animate-spin mr-3" />
-              <span className="text-muted-foreground">
-                AI is analyzing your financial data...
-              </span>
-            </div>
-          ) : aiInsights ? (
-            <div className="prose prose-invert max-w-none">
-              <div className="text-white text-sm whitespace-pre-wrap leading-relaxed">
-                {aiInsights}
+      {isConfigured ? (
+        <Card className="bg-[#111111] border-gold/20 gold-glow">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-white text-lg flex items-center gap-2">
+              <Sparkles size={18} className="text-gold" />
+              AI-Powered Deep Insights
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isAiLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={24} className="text-gold animate-spin mr-3" />
+                <span className="text-muted-foreground">
+                  AI is analyzing your financial data...
+                </span>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground text-sm">
-                Click &quot;Refresh AI Insights&quot; to get AI-powered analysis
+            ) : aiInsights ? (
+              <div className="prose prose-invert max-w-none">
+                <div className="text-white text-sm whitespace-pre-wrap leading-relaxed">
+                  {aiInsights}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground text-sm">
+                  Click &quot;Refresh AI Insights&quot; to get AI-powered analysis
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-[#111111] border-gold/20">
+          <CardContent className="p-6 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="p-3 rounded-full bg-gold/10">
+                <Key size={24} className="text-gold" />
+              </div>
+              <h3 className="text-white font-semibold">AI Deep Insights</h3>
+              <p className="text-muted-foreground text-sm max-w-md">
+                Configure your AI API key in the AI Assistant tab to unlock deep AI-powered insights. 
+                Get a free Gemini API key from{" "}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gold hover:text-gold-light underline"
+                >
+                  Google AI Studio
+                </a>
+                .
               </p>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

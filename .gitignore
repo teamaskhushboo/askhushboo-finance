@@ -4,9 +4,6 @@
 .pnp.js
 .yarn/install-state.gz
 
-# testing
-/coverage
-
 # next.js
 /.next/
 /out/
@@ -23,28 +20,31 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
+# env files
 .env*.local
-.env
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # prisma
 prisma/dev.db
 prisma/dev.db-journal
 
-# skills
+# project-specific
 /skills
 /download
 /examples
 /mini-services
 /zscripts
 /zai
-.dev.log
+/agent-ctx
+/push-dir
+/upload
+dev.log
+dev2.log
 worklog.md
-agent-ctx
+db/custom.db
+package-lock.json

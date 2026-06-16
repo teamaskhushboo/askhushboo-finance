@@ -9,6 +9,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,13 +40,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, Edit2, Trash2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Loader2 } from "lucide-react";
 import {
   Revenue,
   RevenueSource,
   REVENUE_SOURCES,
   PERFUMES,
-  PAYMENT_METHODS,
 } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -45,9 +54,9 @@ const formatPKR = (amount: number) =>
 
 interface RevenueManagerProps {
   revenue: Revenue[];
-  onAdd: (revenue: Revenue) => void;
-  onUpdate: (revenue: Revenue) => void;
-  onDelete: (id: string) => void;
+  onAdd: (revenue: Revenue) => Promise<Revenue>;
+  onUpdate: (revenue: Revenue) => Promise<Revenue>;
+  onDelete: (id: string) => Promise<void>;
 }
 
 export default function RevenueManager({
@@ -60,6 +69,8 @@ export default function RevenueManager({
   const [editingRevenue, setEditingRevenue] = useState<Revenue | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSource, setFilterSource] = useState<string>("all");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // Form state
   const [formDate, setFormDate] = useState(
@@ -100,38 +111,53 @@ export default function RevenueManager({
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formDescription.trim() || !formAmount || Number(formAmount) <= 0) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    const rev: Revenue = {
-      id: editingRevenue?.id || Date.now().toString(),
-      date: formDate,
-      source: formSource,
-      description: formDescription.trim(),
-      amount: Number(formAmount),
-      perfume: formPerfume || undefined,
-      quantity: Number(formQuantity) || 0,
-      notes: formNotes,
-    };
+    setIsSubmitting(true);
 
-    if (editingRevenue) {
-      onUpdate(rev);
-      toast.success("Revenue updated successfully 💛");
-    } else {
-      onAdd(rev);
-      toast.success("Revenue added successfully 💛");
+    try {
+      const rev: Revenue = {
+        id: editingRevenue?.id || Date.now().toString(),
+        date: formDate,
+        source: formSource,
+        description: formDescription.trim(),
+        amount: Number(formAmount),
+        perfume: formPerfume || undefined,
+        quantity: Number(formQuantity) || 0,
+        notes: formNotes,
+      };
+
+      if (editingRevenue) {
+        await onUpdate(rev);
+        toast.success("Revenue updated successfully 💛");
+      } else {
+        await onAdd(rev);
+        toast.success("Revenue added successfully 💛");
+      }
+
+      setIsDialogOpen(false);
+      resetForm();
+    } catch {
+      toast.error("Failed to save revenue. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsDialogOpen(false);
-    resetForm();
   };
 
-  const handleDelete = (id: string) => {
-    onDelete(id);
-    toast.success("Revenue entry deleted");
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await onDelete(deleteId);
+      toast.success("Revenue entry deleted");
+    } catch {
+      toast.error("Failed to delete revenue. Please try again.");
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   // Filtered revenue
@@ -332,7 +358,7 @@ export default function RevenueManager({
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleDelete(rev.id)}
+                              onClick={() => setDeleteId(rev.id)}
                               className="text-muted-foreground hover:text-danger h-8 w-8"
                             >
                               <Trash2 size={14} />
@@ -480,19 +506,42 @@ export default function RevenueManager({
             <Button
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
+              disabled={isSubmitting}
               className="border-gold/30 text-muted-foreground hover:text-white"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
+              disabled={isSubmitting}
               className="bg-gold hover:bg-gold-dark text-black font-semibold"
             >
+              {isSubmitting ? (
+                <Loader2 size={14} className="animate-spin mr-2" />
+              ) : null}
               {editingRevenue ? "Update" : "Add Revenue"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent className="bg-[#111111] border-gold/30">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">Delete Revenue Entry?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              This action cannot be undone. The revenue entry will be permanently deleted from Firebase.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-gold/30 text-muted-foreground">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-danger hover:bg-danger/90 text-white">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
