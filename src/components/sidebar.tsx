@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { ActiveTab } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import AnimatedLogo from "./animated-logo";
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -57,13 +58,16 @@ export default function Sidebar({
         {/* Brand header */}
         <div className="p-6 border-b border-[rgba(223,173,24,0.15)]">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-gold tracking-wide">
-                #AS KHUSHBOO
-              </h1>
-              <p className="text-xs text-muted-foreground mt-1 italic">
-                Khushboo That Speaks for YOU 💛
-              </p>
+            <div className="flex items-center gap-3">
+              <AnimatedLogo size="sm" />
+              <div>
+                <h1 className="as-logo-text text-xl font-bold tracking-wide">
+                  #AS KHUSHBOO
+                </h1>
+                <p className="text-xs text-muted-foreground mt-1 italic">
+                  Khushboo That Speaks for YOU 💛
+                </p>
+              </div>
             </div>
             <button
               onClick={onClose}

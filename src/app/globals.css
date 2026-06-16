@@ -211,3 +211,139 @@
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* ============================= */
+/* ANIMATED LOGO + MIST EFFECT   */
+/* ============================= */
+
+/* Logo container */
+.as-logo-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The perfume bottle / logo SVG wrapper */
+.as-logo-bottle {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 0 8px rgba(223, 173, 24, 0.4));
+  animation: logo-bottle-shine 4s ease-in-out infinite;
+}
+
+@keyframes logo-bottle-shine {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px rgba(223, 173, 24, 0.4));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(223, 173, 24, 0.7)) drop-shadow(0 0 24px rgba(223, 173, 24, 0.3));
+  }
+}
+
+/* Mist particles container - sits behind/around the bottle */
+.as-logo-mist {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 80px;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+
+/* Individual mist particle */
+.as-mist-particle {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(223, 173, 24, 0.6) 0%, rgba(223, 173, 24, 0.2) 50%, transparent 70%);
+  opacity: 0;
+  animation: mist-rise 3s ease-out infinite;
+}
+
+@keyframes mist-rise {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0) scale(0.5);
+  }
+  20% {
+    opacity: 0.8;
+    transform: translateX(-50%) translateY(-15px) scale(1);
+  }
+  60% {
+    opacity: 0.4;
+    transform: translateX(calc(-50% - 8px)) translateY(-40px) scale(1.5);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(calc(-50% + 6px)) translateY(-70px) scale(2);
+  }
+}
+
+/* Each particle gets a different delay and horizontal drift */
+.as-mist-particle:nth-child(1) { animation-delay: 0s; left: 50%; }
+.as-mist-particle:nth-child(2) { animation-delay: 0.6s; left: 40%; }
+.as-mist-particle:nth-child(3) { animation-delay: 1.2s; left: 60%; }
+.as-mist-particle:nth-child(4) { animation-delay: 1.8s; left: 45%; }
+.as-mist-particle:nth-child(5) { animation-delay: 2.4s; left: 55%; }
+
+/* Gold gradient text for "#AS KHUSHBOO" */
+.as-logo-text {
+  background: linear-gradient(135deg, #FFD700 0%, #DFAD18 50%, #B8860B 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% 200%;
+  animation: gold-shimmer 5s ease-in-out infinite;
+}
+
+@keyframes gold-shimmer {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Larger variant for page headers */
+.as-logo-lg .as-logo-bottle {
+  width: 56px;
+  height: 56px;
+}
+
+.as-logo-lg .as-logo-mist {
+  width: 70px;
+  height: 90px;
+  top: -10px;
+}
+
+/* Small variant for sidebar */
+.as-logo-sm .as-logo-bottle {
+  width: 36px;
+  height: 36px;
+}
+
+.as-logo-sm .as-logo-mist {
+  width: 50px;
+  height: 70px;
+  top: -6px;
+}
+
+/* Tiny variant for mobile header */
+.as-logo-xs .as-logo-bottle {
+  width: 28px;
+  height: 28px;
+}
+
+.as-logo-xs .as-logo-mist {
+  width: 40px;
+  height: 55px;
+  top: -4px;
+}

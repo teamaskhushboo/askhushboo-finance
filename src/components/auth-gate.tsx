@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import AnimatedLogo from "./animated-logo";
 
 const LS_AUTH_KEY = "askhushboo_auth_v1";
 
@@ -61,8 +62,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <div className="text-4xl mb-4">💛</div>
-          <h1 className="text-2xl font-bold text-gold mb-2">#AS KHUSHBOO</h1>
+          <AnimatedLogo size="lg" className="mx-auto mb-4" />
+          <h1 className="as-logo-text text-2xl font-bold mb-2">#AS KHUSHBOO</h1>
           <p className="text-muted-foreground text-sm">Loading...</p>
         </div>
       </div>
@@ -74,8 +75,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="text-5xl mb-4">💛</div>
-            <h1 className="text-3xl font-bold text-gold mb-2">#AS KHUSHBOO</h1>
+            <AnimatedLogo size="lg" className="mx-auto mb-4" />
+            <h1 className="as-logo-text text-3xl font-bold mb-2">#AS KHUSHBOO</h1>
             <p className="text-muted-foreground text-sm">
               Khushboo That Speaks for YOU
             </p>

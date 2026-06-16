@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Expense, Revenue } from "@/lib/types";
 
 const SYSTEM_PROMPT = `You are the AI Finance Assistant for #AS KHUSHBOO, a Pakistani luxury fragrance brand. Your name is "KHUSHBOO AI".
 
@@ -10,59 +11,118 @@ BRAND INFO:
 - Currency: PKR (Pakistani Rupees)
 - Brand Colors: Royal Gold and Deep Black
 
-STYLE: Warm mix of Roman Urdu and English. Use "Bhai", "Yaar" naturally. Be helpful and financially smart. Use 💛 occasionally. Keep responses concise but informative. NEVER use em dashes (—). Always reference specific numbers from the data when answering.`;
+STYLE: Warm mix of Roman Urdu and English. Use "Bhai", "Yaar" naturally. Be helpful and financially smart. Use 💛 occasionally. Keep responses concise but informative. NEVER use em dashes (—). Always reference specific numbers from the data when answering.
+
+=== ACTION CAPABILITIES ===
+
+You can PERFORM ACTIONS on the user's data! When the user asks you to do something (add, update, delete), use this EXACT format at the END of your response:
+
+\`\`\`action
+{"type": "<action_type>", "payload": {<action_data>}}
+\`\`\`
+
+IMPORTANT RULES FOR ACTIONS:
+1. ALWAYS include a brief explanation BEFORE the action block (in Roman Urdu + English).
+2. ONLY use ONE action block per response.
+3. Use today's date in YYYY-MM-DD format if user doesn't specify a date.
+4. For amounts, use NUMBERS only (no commas, no "Rs" prefix). Example: 35000 not Rs 35,000.
+5. After the action block, add a short confirmation message.
+
+=== ACTION TYPES ===
+
+1. ADD EXPENSE - when user says "expense add karo", "kharcha add kar do", etc.
+\`\`\`action
+{"type": "add_expense", "payload": {"date": "2026-06-17", "category": "Packaging", "description": "50 perfume boxes", "amount": 12000, "paymentMethod": "Cash", "notes": "Supplier: ABC"}}
+\`\`\`
+Valid categories: "Packaging", "Perfume Oils", "Printing & DTF", "Equipment", "Digital & Marketing", "Transport", "Testing & Misc"
+Valid payment methods: "Cash", "Online", "Bank Transfer", "Invoice", "Counter Cash", "Other"
+
+2. UPDATE EXPENSE - when user says "expense update karo", "price change karo", etc.
+   YOU MUST reference the expense by its EXACT id (shown in the data list as [id: ...])
+\`\`\`action
+{"type": "update_expense", "payload": {"id": "abc123", "amount": 14000, "description": "Updated description"}}
+\`\`\`
+Only include fields you want to change. id is REQUIRED.
+
+3. DELETE EXPENSE - when user says "expense delete karo", "hata do", etc.
+\`\`\`action
+{"type": "delete_expense", "payload": {"id": "abc123"}}
+\`\`\`
+
+4. ADD REVENUE - when user says "sale add karo", "revenue add karo", etc.
+\`\`\`action
+{"type": "add_revenue", "payload": {"date": "2026-06-17", "source": "Online Sale", "description": "Sold 2 Shahkaar", "amount": 8000, "perfume": "Shahkaar", "quantity": 2, "notes": "Customer: Ali"}}
+\`\`\`
+Valid sources: "Online Sale", "WhatsApp Order", "Direct Sale", "Sample Sale", "Bundle Sale", "Other"
+Valid perfumes: "Shahkaar", "Meherban", "Gulnaz", "Noor-e-Jahan", "Rooh", "Rawaan"
+
+=== IMPORTANT ===
+- For ANALYSIS questions (kitna kharcha hua, kahan zyada paisa, profit/loss, etc.) DO NOT use action blocks. Just answer with numbers from data.
+- For ACTION requests (add/update/delete) ALWAYS use the action block.
+- If user gives vague info (e.g., "ek expense add karo"), ask for clarification (description, amount, category).
+- If user asks to update but doesn't specify id, list matching expenses and ask which one.
+`;
+
+interface AIRequestBody {
+  message?: string;
+  expenses?: Expense[];
+  revenue?: Revenue[];
+  history?: Array<{ role: string; content: string }>;
+  apiKey?: string;
+  provider?: string;
+  modelName?: string;
+  customEndpoint?: string;
+}
 
 export async function POST(req: NextRequest) {
-  let message = "";
-  let expenses: Array<{ category: string; amount: number; date: string; description: string }> = [];
-  let revenue: Array<{ amount: number; date: string; source: string; description: string; perfume?: string }> = [];
-  let history: Array<{ role: string; content: string }> = [];
-  let apiKey = "";
-  let provider = "gemini";
-  let modelName = "gemini-2.0-flash";
-  let customEndpoint = "";
-
   try {
-    const body = await req.json();
-    message = body.message || "";
-    expenses = body.expenses || [];
-    revenue = body.revenue || [];
-    history = body.history || [];
-    apiKey = body.apiKey || "";
-    provider = body.provider || "gemini";
-    modelName = body.modelName || "gemini-2.0-flash";
-    customEndpoint = body.customEndpoint || "";
+    const body: AIRequestBody = await req.json();
+    const {
+      message = "",
+      expenses = [],
+      revenue = [],
+      history = [],
+      apiKey = "",
+      provider = "groq",
+      modelName = "llama-3.3-70b-versatile",
+      customEndpoint = "",
+    } = body;
 
     if (!message) {
-      return NextResponse.json(
-        { error: "Message is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    // Build financial data summary for context
-    const totalExpenses = expenses.reduce(
-      (sum: number, e: { amount: number }) => sum + e.amount,
-      0
-    );
-    const totalRevenue = revenue.reduce(
-      (sum: number, r: { amount: number }) => sum + r.amount,
-      0
-    );
+    // Build comprehensive financial data summary - send ALL expenses (not just 5)
+    const totalExpenses = expenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
+    const totalRevenue = revenue.reduce((sum: number, r: Revenue) => sum + r.amount, 0);
 
     const categoryBreakdown: Record<string, number> = {};
-    expenses.forEach((e: { category: string; amount: number }) => {
-      categoryBreakdown[e.category] =
-        (categoryBreakdown[e.category] || 0) + e.amount;
+    expenses.forEach((e: Expense) => {
+      categoryBreakdown[e.category] = (categoryBreakdown[e.category] || 0) + e.amount;
     });
 
     const perfumeRevenue: Record<string, number> = {};
-    revenue.forEach((r: { perfume?: string; amount: number }) => {
+    revenue.forEach((r: Revenue) => {
       const key = r.perfume || "Unspecified";
       perfumeRevenue[key] = (perfumeRevenue[key] || 0) + r.amount;
     });
 
     const formatPKR = (n: number) => `Rs ${n.toLocaleString("en-PK")}`;
+
+    // Send ALL expenses with their IDs so AI can reference them for updates
+    const allExpensesList = expenses
+      .map(
+        (e: Expense) =>
+          `[id: ${e.id}] ${e.date} | ${e.description} | ${e.category} | ${formatPKR(e.amount)} | ${e.paymentMethod}${e.notes ? ` | Notes: ${e.notes}` : ""}`
+      )
+      .join("\n");
+
+    const allRevenueList = revenue
+      .map(
+        (r: Revenue) =>
+          `[id: ${r.id}] ${r.date} | ${r.description} | ${r.source}${r.perfume ? ` | ${r.perfume}` : ""} | ${formatPKR(r.amount)} | Qty: ${r.quantity}`
+      )
+      .join("\n");
 
     const financialSummary = `
 FINANCIAL DATA:
@@ -75,7 +135,7 @@ EXPENSE BREAKDOWN BY CATEGORY:
 ${Object.entries(categoryBreakdown)
   .sort(([, a], [, b]) => b - a)
   .map(([cat, amt]) => `- ${cat}: ${formatPKR(amt)} (${totalExpenses > 0 ? ((amt / totalExpenses) * 100).toFixed(1) : "0"}%)`)
-  .join("\n")}
+  .join("\n") || "No expenses yet"}
 
 REVENUE BY PERFUME:
 ${Object.entries(perfumeRevenue)
@@ -83,20 +143,14 @@ ${Object.entries(perfumeRevenue)
   .map(([perf, amt]) => `- ${perf}: ${formatPKR(amt)}`)
   .join("\n") || "No revenue data yet"}
 
-RECENT EXPENSES (last 5):
-${expenses
-  .slice(0, 5)
-  .map((e: { date: string; category: string; description: string; amount: number }) => `- ${e.date}: ${e.description} (${e.category}) - ${formatPKR(e.amount)}`)
-  .join("\n")}
+=== ALL EXPENSES (with IDs - use these IDs for updates/deletes) ===
+${allExpensesList || "No expenses recorded yet"}
 
-RECENT REVENUE (last 5):
-${revenue
-  .slice(0, 5)
-  .map((r: { date: string; source: string; description: string; amount: number; perfume?: string }) => `- ${r.date}: ${r.description} (${r.source}${r.perfume ? `, ${r.perfume}` : ""}) - ${formatPKR(r.amount)}`)
-  .join("\n") || "No revenue entries yet"}
+=== ALL REVENUE ENTRIES (with IDs) ===
+${allRevenueList || "No revenue recorded yet"}
 `;
 
-    const fullSystemPrompt = `${SYSTEM_PROMPT}\n\n${financialSummary}\n\nAnswer the user's question based on the financial data provided. If asked about something not in the data, say so honestly. Always reference specific numbers when possible.`;
+    const fullSystemPrompt = `${SYSTEM_PROMPT}\n\n${financialSummary}\n\nToday's date is ${new Date().toISOString().split("T")[0]}.\n\nAnswer the user's question. If they ask for an action (add/update/delete), use the action block format at the END of your response.`;
 
     // Track what's happening for diagnostics
     let providerError: string | null = null;
@@ -115,7 +169,6 @@ ${revenue
         const errMsg = aiError instanceof Error ? aiError.message : String(aiError);
         providerError = errMsg;
 
-        // Classify the error
         if (errMsg.includes("429") || errMsg.toLowerCase().includes("quota")) {
           providerErrorKind = "quota";
         } else if (errMsg.includes("401") || errMsg.includes("403") || errMsg.toLowerCase().includes("unauthorized") || errMsg.toLowerCase().includes("api key")) {
@@ -129,26 +182,18 @@ ${revenue
         }
 
         console.error(`[AI Chat] Provider '${provider}' failed (${providerErrorKind}):`, errMsg.substring(0, 300));
-
-        // Fall through to z-ai-web-dev-sdk fallback
       }
     }
 
-    // STEP 2: Try z-ai-web-dev-sdk (works on Vercel - it's a real HTTP-based SDK)
+    // STEP 2: Try z-ai-web-dev-sdk fallback
     try {
       const aiMessages = [
-        {
-          role: "assistant" as const,
-          content: fullSystemPrompt,
-        },
-        ...history.map((h: { role: string; content: string }) => ({
+        { role: "assistant" as const, content: fullSystemPrompt },
+        ...history.map((h) => ({
           role: (h.role === "user" ? "user" : "assistant") as "user" | "assistant",
           content: h.content,
         })),
-        {
-          role: "user" as const,
-          content: message,
-        },
+        { role: "user" as const, content: message },
       ];
 
       const ZAI = (await import("z-ai-web-dev-sdk")).default;
@@ -161,19 +206,15 @@ ${revenue
       const aiResponse = completion.choices?.[0]?.message?.content;
 
       if (aiResponse) {
-        // Compose a helpful notice when we fell back from a failing provider
         let warning: string | undefined;
         if (providerError && apiKey) {
           const providerLabel = provider === "gemini" ? "Gemini" : provider === "groq" ? "Groq" : provider === "openai" ? "OpenAI" : "Custom";
           if (providerErrorKind === "quota") {
-            warning =
-              `⚠ Note: Aapki ${providerLabel} API key ka free quota khatam ho gaya hai, isliye abhi free AI (built-in fallback) use karke jawab de raha hoon. AI Settings mein "Groq (Best Free Tier)" select karein taake future mein reliable AI mile. 💛`;
+            warning = `⚠ Note: Aapki ${providerLabel} API key ka free quota khatam ho gaya hai, isliye abhi free AI (built-in fallback) use karke jawab de raha hoon. AI Settings mein "Groq (Best Free Tier)" select karein taake future mein reliable AI mile. 💛`;
           } else if (providerErrorKind === "auth") {
-            warning =
-              `⚠ Note: Aapki ${providerLabel} API key invalid hai, isliye free AI (built-in fallback) use ho raha hai. AI Settings mein key check karein ya Groq try karein (free, generous quota).`;
+            warning = `⚠ Note: Aapki ${providerLabel} API key invalid hai, isliye free AI (built-in fallback) use ho raha hai. AI Settings mein key check karein ya Groq try karein (free, generous quota).`;
           } else {
-            warning =
-              `⚠ Note: ${providerLabel} API mein issue tha, isliye free AI (built-in fallback) use ho raha hai. AI Settings check karein.`;
+            warning = `⚠ Note: ${providerLabel} API mein issue tha, isliye free AI (built-in fallback) use ho raha hai. AI Settings check karein.`;
           }
         }
 
@@ -191,7 +232,6 @@ ${revenue
     } catch (fallbackError) {
       console.error("[AI Chat] Fallback AI also failed:", fallbackError);
 
-      // STEP 3: Final hardcoded fallback - generate from data
       const fallbackText = generateFallbackResponse(message, expenses, revenue, totalExpenses, totalRevenue, categoryBreakdown);
 
       let warning = "⚠ AI providers abhi available nahi hain, isliye basic data-based answer de raha hoon. AI Settings mein Groq configure karein (free, generous quota).";
@@ -236,10 +276,7 @@ async function callAIProvider(
         role: h.role === "user" ? "user" : "model",
         parts: [{ text: h.content }],
       })),
-      {
-        role: "user",
-        parts: [{ text: message }],
-      },
+      { role: "user", parts: [{ text: message }] },
     ];
 
     const response = await fetch(url, {
@@ -263,11 +300,12 @@ async function callAIProvider(
   }
 
   if (provider === "openai" || provider === "custom" || provider === "groq") {
-    const baseUrl = provider === "openai"
-      ? "https://api.openai.com/v1/chat/completions"
-      : provider === "groq"
-        ? "https://api.groq.com/openai/v1/chat/completions"
-        : customEndpoint;
+    const baseUrl =
+      provider === "openai"
+        ? "https://api.openai.com/v1/chat/completions"
+        : provider === "groq"
+          ? "https://api.groq.com/openai/v1/chat/completions"
+          : customEndpoint;
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -287,7 +325,7 @@ async function callAIProvider(
       body: JSON.stringify({
         model: modelName,
         messages,
-        max_tokens: 1024,
+        max_tokens: 1500,
       }),
     });
 
@@ -307,14 +345,24 @@ async function callAIProvider(
 
 function generateFallbackResponse(
   message: string,
-  expenses: Array<{ category: string; amount: number; description: string }>,
-  revenue: Array<{ amount: number; source: string; perfume?: string }>,
+  expenses: Expense[],
+  revenue: Revenue[],
   totalExpenses: number,
   totalRevenue: number,
   categoryBreakdown: Record<string, number>
 ): string {
   const formatPKR = (n: number) => `Rs ${n.toLocaleString("en-PK")}`;
   const lowerMsg = message.toLowerCase();
+
+  // Check if user is asking for an action
+  if (lowerMsg.includes("add") || lowerMsg.includes("kar do") || lowerMsg.includes("karo")) {
+    if (lowerMsg.includes("expense") || lowerMsg.includes("kharcha")) {
+      return "Bhai, AI providers abhi available nahi hain isliye main automatically expense add nahi kar sakta. Manualy Expenses tab mein jaa kar add kar dein, ya thodi der baad try karein jab AI providers wapas aa jayein. 💛";
+    }
+    if (lowerMsg.includes("revenue") || lowerMsg.includes("sale")) {
+      return "Bhai, AI providers abhi available nahi hain isliye main automatically revenue add nahi kar sakta. Revenue tab mein jaa kar manualy add kar dein. 💛";
+    }
+  }
 
   if (lowerMsg.includes("packaging") && (lowerMsg.includes("spend") || lowerMsg.includes("kitna"))) {
     const packagingTotal = expenses.filter((e) => e.category === "Packaging").reduce((sum, e) => sum + e.amount, 0);

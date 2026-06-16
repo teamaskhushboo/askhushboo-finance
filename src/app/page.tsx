@@ -8,6 +8,7 @@ import RevenueManager from "@/components/revenue-manager";
 import AIAssistant from "@/components/ai-assistant";
 import InsightsPanel from "@/components/insights-panel";
 import AuthGate from "@/components/auth-gate";
+import AnimatedLogo from "@/components/animated-logo";
 import { ActiveTab, Expense, Revenue, AppSettings } from "@/lib/types";
 import {
   getExpenses,
@@ -111,39 +112,68 @@ export default function Home() {
     };
   }, []);
 
-  // Expense CRUD
+  // Expense CRUD - with optimistic state updates for instant dashboard refresh
   const handleAddExpense = useCallback(async (expense: Expense) => {
     const newExpense = await addExpenseFirestore(expense);
+    // Instant local state update (no waiting for polling)
+    setExpenses((prev) => {
+      const updated = [newExpense, ...prev];
+      return updated.sort((a, b) => (a.date < b.date ? 1 : -1));
+    });
     return newExpense;
   }, []);
 
   const handleUpdateExpense = useCallback(async (expense: Expense) => {
     const updatedExpense = await updateExpenseFirestore(expense);
+    // Instant local state update
+    setExpenses((prev) => {
+      const updated = prev.map((e) => (e.id === updatedExpense.id ? updatedExpense : e));
+      return updated.sort((a, b) => (a.date < b.date ? 1 : -1));
+    });
     return updatedExpense;
   }, []);
 
   const handleDeleteExpense = useCallback(async (id: string) => {
     await deleteExpenseFirestore(id);
+    // Instant local state update
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
   // Restore pre-loaded expenses (39 items, Rs 189,530)
   const handleRestoreExpenses = useCallback(async () => {
-    return await forceReseedExpenses();
-  }, []);
+    const count = await forceReseedExpenses();
+    // Force refresh from server
+    try {
+      const freshExpenses = await getExpenses();
+      setExpenses(freshExpenses);
+    } catch (e) {
+      console.warn("Refresh after reseed failed:", e);
+    }
+    return count;
+  }, [getExpenses]);
 
-  // Revenue CRUD
+  // Revenue CRUD - with optimistic state updates
   const handleAddRevenue = useCallback(async (rev: Revenue) => {
     const newRevenue = await addRevenueFirestore(rev);
+    setRevenue((prev) => {
+      const updated = [newRevenue, ...prev];
+      return updated.sort((a, b) => (a.date < b.date ? 1 : -1));
+    });
     return newRevenue;
   }, []);
 
   const handleUpdateRevenue = useCallback(async (rev: Revenue) => {
     const updatedRevenue = await updateRevenueFirestore(rev);
+    setRevenue((prev) => {
+      const updated = prev.map((r) => (r.id === updatedRevenue.id ? updatedRevenue : r));
+      return updated.sort((a, b) => (a.date < b.date ? 1 : -1));
+    });
     return updatedRevenue;
   }, []);
 
   const handleDeleteRevenue = useCallback(async (id: string) => {
     await deleteRevenueFirestore(id);
+    setRevenue((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
   // Settings
@@ -182,6 +212,12 @@ export default function Home() {
             revenue={revenue}
             settings={settings}
             onSettingsChange={handleSettingsChange}
+            onAddExpense={handleAddExpense}
+            onUpdateExpense={handleUpdateExpense}
+            onDeleteExpense={handleDeleteExpense}
+            onAddRevenue={handleAddRevenue}
+            onUpdateRevenue={handleUpdateRevenue}
+            onDeleteRevenue={handleDeleteRevenue}
           />
         );
       case "insights":
@@ -203,8 +239,8 @@ export default function Home() {
       <AuthGate>
         <div className="min-h-screen bg-black flex items-center justify-center">
           <div className="text-center">
-            <div className="text-4xl mb-4 animate-pulse">💛</div>
-            <h1 className="text-2xl font-bold text-gold mb-2">#AS KHUSHBOO</h1>
+            <AnimatedLogo size="lg" className="mx-auto mb-4" />
+            <h1 className="as-logo-text text-2xl font-bold mb-2">#AS KHUSHBOO</h1>
             <p className="text-muted-foreground text-sm">
               Loading your finance data...
             </p>
@@ -239,7 +275,10 @@ export default function Home() {
             >
               <Menu size={22} />
             </Button>
-            <h1 className="text-gold font-bold text-lg">#AS KHUSHBOO</h1>
+            <div className="flex items-center gap-2">
+              <AnimatedLogo size="xs" />
+              <h1 className="as-logo-text font-bold text-lg">#AS KHUSHBOO</h1>
+            </div>
             <div className="w-10" />
           </div>
         </header>
@@ -248,13 +287,17 @@ export default function Home() {
         <div className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 overflow-y-auto custom-scrollbar">
           {/* Page title for desktop */}
           <div className="hidden lg:flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-white">
-                #AS KHUSHBOO <span className="text-gold">Finance</span>
-              </h1>
-              <p className="text-muted-foreground text-sm mt-1">
-                Khushboo That Speaks for YOU 💛
-              </p>
+            <div className="flex items-center gap-4">
+              <AnimatedLogo size="lg" />
+              <div>
+                <h1 className="text-3xl font-bold">
+                  <span className="as-logo-text">#AS KHUSHBOO</span>{" "}
+                  <span className="text-gold">Finance</span>
+                </h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Khushboo That Speaks for YOU 💛
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground">
