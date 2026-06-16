@@ -195,8 +195,8 @@ export default function InsightsPanel({
           expenses,
           revenue,
           apiKey: settings.aiApiKey || "",
-          provider: settings.aiProvider || "gemini",
-          modelName: settings.aiModelName || "gemini-2.0-flash",
+          provider: settings.aiProvider || "free",
+          modelName: settings.aiModelName || "z-ai-built-in",
           customEndpoint: settings.aiCustomEndpoint || "",
         }),
       });

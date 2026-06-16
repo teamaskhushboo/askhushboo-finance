@@ -90,8 +90,8 @@ export async function getSettings(): Promise<AppSettings> {
   return {
     id: SETTINGS_DOC,
     aiApiKey: "",
-    aiProvider: "gemini",
-    aiModelName: "gemini-2.0-flash",
+    aiProvider: "free",
+    aiModelName: "z-ai-built-in",
     aiCustomEndpoint: "",
     updatedAt: null,
   };

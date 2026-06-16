@@ -37,23 +37,25 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
   const [showKey, setShowKey] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; quotaExceeded?: boolean; keyValid?: boolean } | null>(null);
 
   // Local form state
   const [apiKey, setApiKey] = useState(settings.aiApiKey || "");
-  const [provider, setProvider] = useState<string>(settings.aiProvider || "gemini");
-  const [modelName, setModelName] = useState(settings.aiModelName || "gemini-2.0-flash");
+  const [provider, setProvider] = useState<string>(settings.aiProvider || "free");
+  const [modelName, setModelName] = useState(settings.aiModelName || "z-ai-built-in");
   const [customEndpoint, setCustomEndpoint] = useState(settings.aiCustomEndpoint || "");
 
   // Sync with parent settings
   useEffect(() => {
     setApiKey(settings.aiApiKey || "");
-    setProvider(settings.aiProvider || "gemini");
-    setModelName(settings.aiModelName || "gemini-2.0-flash");
+    setProvider(settings.aiProvider || "free");
+    setModelName(settings.aiModelName || "z-ai-built-in");
     setCustomEndpoint(settings.aiCustomEndpoint || "");
   }, [settings]);
 
-  const isConfigured = !!(settings.aiApiKey && settings.aiApiKey.length > 0);
+  const isConfigured =
+    settings.aiProvider === "free" ||
+    !!(settings.aiApiKey && settings.aiApiKey.length > 0);
 
   const testConnection = useCallback(async () => {
     if (!apiKey) {
@@ -134,6 +136,10 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
       setModelName("gemini-2.0-flash");
     } else if (value === "openai") {
       setModelName("gpt-4o-mini");
+    } else if (value === "free") {
+      // Free AI - uses built-in z-ai-web-dev-sdk, no key needed
+      setApiKey("");
+      setModelName("z-ai-built-in");
     }
     setTestResult(null);
   };
@@ -180,7 +186,40 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
             className="overflow-hidden"
           >
             <CardContent className="pt-0 pb-4 space-y-4">
+              {/* Provider */}
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-xs">Provider</Label>
+                <Select value={provider} onValueChange={handleProviderChange}>
+                  <SelectTrigger className="bg-[#0A0A0A] border-gold/20 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#111111] border-gold/20">
+                    <SelectItem value="free" className="text-white focus:text-white focus:bg-gold/10">
+                      Free AI (No Key Needed) 💛
+                    </SelectItem>
+                    <SelectItem value="gemini" className="text-white focus:text-white focus:bg-gold/10">
+                      Google Gemini
+                    </SelectItem>
+                    <SelectItem value="openai" className="text-white focus:text-white focus:bg-gold/10">
+                      OpenAI
+                    </SelectItem>
+                    <SelectItem value="custom" className="text-white focus:text-white focus:bg-gold/10">
+                      Custom Endpoint
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {provider === "free" && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg text-xs bg-gold/10 border border-gold/30">
+                    <Zap size={14} className="text-gold mt-0.5 flex-shrink-0" />
+                    <span className="text-gold">
+                      Free AI use ho raha hai. Koi API key zaroori nahi, unlimited messages, built-in backup. Save Settings click karein.
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {/* API Key */}
+              {provider !== "free" && (
               <div className="space-y-2">
                 <Label className="text-muted-foreground text-xs">API Key</Label>
                 <div className="relative">
@@ -202,29 +241,10 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
                   </button>
                 </div>
               </div>
-
-              {/* Provider */}
-              <div className="space-y-2">
-                <Label className="text-muted-foreground text-xs">Provider</Label>
-                <Select value={provider} onValueChange={handleProviderChange}>
-                  <SelectTrigger className="bg-[#0A0A0A] border-gold/20 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#111111] border-gold/20">
-                    <SelectItem value="gemini" className="text-white focus:text-white focus:bg-gold/10">
-                      Google Gemini
-                    </SelectItem>
-                    <SelectItem value="openai" className="text-white focus:text-white focus:bg-gold/10">
-                      OpenAI
-                    </SelectItem>
-                    <SelectItem value="custom" className="text-white focus:text-white focus:bg-gold/10">
-                      Custom Endpoint
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              )}
 
               {/* Model Name */}
+              {provider !== "free" && (
               <div className="space-y-2">
                 <Label className="text-muted-foreground text-xs">Model Name</Label>
                 <Input
@@ -237,6 +257,7 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
                   className="bg-[#0A0A0A] border-gold/20 text-white placeholder:text-muted-foreground/50"
                 />
               </div>
+              )}
 
               {/* Custom Endpoint (only for custom provider) */}
               {provider === "custom" && (
@@ -260,15 +281,19 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
                   className={`flex items-start gap-2 p-3 rounded-lg text-xs ${
                     testResult.success
                       ? "bg-success/10 border border-success/30"
-                      : "bg-danger/10 border border-danger/30"
+                      : testResult.quotaExceeded
+                        ? "bg-gold/10 border border-gold/30"
+                        : "bg-danger/10 border border-danger/30"
                   }`}
                 >
                   {testResult.success ? (
                     <CheckCircle2 size={14} className="text-success mt-0.5 flex-shrink-0" />
+                  ) : testResult.quotaExceeded ? (
+                    <Zap size={14} className="text-gold mt-0.5 flex-shrink-0" />
                   ) : (
                     <XCircle size={14} className="text-danger mt-0.5 flex-shrink-0" />
                   )}
-                  <span className={testResult.success ? "text-success" : "text-danger"}>
+                  <span className={testResult.success ? "text-success" : testResult.quotaExceeded ? "text-gold" : "text-danger"}>
                     {testResult.message}
                   </span>
                 </div>
@@ -276,6 +301,7 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
 
               {/* Buttons */}
               <div className="flex gap-2">
+                {provider !== "free" && (
                 <Button
                   onClick={testConnection}
                   disabled={isTesting || !apiKey}
@@ -289,6 +315,7 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
                   )}
                   {isTesting ? "Testing..." : "Test Connection"}
                 </Button>
+                )}
                 <Button
                   onClick={saveSettings}
                   disabled={isSaving}

@@ -1,11 +1,113 @@
 import { NextRequest, NextResponse } from "next/server";
 
+interface TestResult {
+  success: boolean;
+  message: string;
+  quotaExceeded?: boolean;
+  keyValid?: boolean;
+}
+
+function parseGeminiError(status: number, errText: string): TestResult {
+  // Try to parse the error body
+  let errBody: { error?: { code?: number; message?: string; status?: string } } = {};
+  try {
+    errBody = JSON.parse(errText);
+  } catch {
+    // not JSON, use raw text
+  }
+
+  const errMsg = errBody?.error?.message || errText.substring(0, 200);
+  const errStatus = errBody?.error?.status || "";
+
+  if (status === 429) {
+    return {
+      success: false,
+      quotaExceeded: true,
+      keyValid: true, // key itself is valid, just quota exceeded
+      message:
+        "Aapki Gemini API key ka free quota khatam ho gaya hai. API key theek hai, bas limit exceed ho gayi. " +
+        "Options: (1) Google AI Studio par wait karein, free quota daily reset hota hai. " +
+        "(2) Google Cloud Console par billing enable karke paid plan use karein. " +
+        "(3) AI Settings mein 'Free AI (No Key)' select karein, yeh free aur unlimited hai. " +
+        "(4) OpenAI ya koi custom provider use karein. 💛",
+    };
+  }
+
+  if (status === 400 || errStatus === "INVALID_ARGUMENT") {
+    return {
+      success: false,
+      message: `Invalid model name ya request format. Model "${errBody?.error?.message?.includes("model") ? "check your model name" : "unknown"}" may not exist. Try "gemini-2.0-flash" or "gemini-1.5-flash".`,
+    };
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      success: false,
+      message: "API key invalid ya unauthorized hai. Google AI Studio (aistudio.google.com/apikey) se naye key generate karein.",
+    };
+  }
+
+  if (status === 404) {
+    return {
+      success: false,
+      message: `Model "${modelName}" nahi mila. Sahi model name use karein, e.g. "gemini-2.0-flash".`,
+    };
+  }
+
+  return {
+    success: false,
+    message: `Gemini API error: ${status} - ${errMsg}`,
+  };
+}
+
+function parseOpenAIError(status: number, errText: string, provider: string): TestResult {
+  let errBody: { error?: { code?: string; message?: string; type?: string } } = {};
+  try {
+    errBody = JSON.parse(errText);
+  } catch {
+    // not JSON
+  }
+
+  const errMsg = errBody?.error?.message || errText.substring(0, 200);
+  const errType = errBody?.error?.type || "";
+
+  if (status === 429) {
+    return {
+      success: false,
+      quotaExceeded: true,
+      keyValid: true,
+      message: `${provider} quota exceeded. API key valid hai, bas rate limit hit ho gayi. Thodi der baad try karein ya plan upgrade karein.`,
+    };
+  }
+
+  if (status === 401) {
+    return {
+      success: false,
+      message: `${provider} API key invalid hai. Naya key generate karke try karein.`,
+    };
+  }
+
+  if (status === 404) {
+    return {
+      success: false,
+      message: `${provider} model nahi mila. Model name check karein.`,
+    };
+  }
+
+  return {
+    success: false,
+    message: `${provider} API error: ${status} - ${errMsg}`,
+  };
+}
+
+let modelName: string = "gemini-2.0-flash";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const apiKey = body.apiKey || "";
     const provider = body.provider || "gemini";
-    const modelName = body.modelName || "gemini-2.0-flash";
+    modelName = body.modelName || "gemini-2.0-flash";
     const customEndpoint = body.customEndpoint || "";
 
     if (!apiKey) {
@@ -29,10 +131,8 @@ export async function POST(req: NextRequest) {
 
       if (!response.ok) {
         const errText = await response.text();
-        return NextResponse.json({
-          success: false,
-          message: `Gemini API error: ${response.status} - ${errText.substring(0, 200)}`,
-        });
+        const result = parseGeminiError(response.status, errText);
+        return NextResponse.json(result);
       }
 
       const data = await response.json();
@@ -45,7 +145,7 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: false,
-        message: "Gemini API returned unexpected response",
+        message: "Gemini API returned unexpected response. Model name check karein.",
       });
     }
 
@@ -76,10 +176,8 @@ export async function POST(req: NextRequest) {
 
       if (!response.ok) {
         const errText = await response.text();
-        return NextResponse.json({
-          success: false,
-          message: `${provider === "openai" ? "OpenAI" : "Custom"} API error: ${response.status} - ${errText.substring(0, 200)}`,
-        });
+        const result = parseOpenAIError(response.status, errText, provider === "openai" ? "OpenAI" : "Custom");
+        return NextResponse.json(result);
       }
 
       const data = await response.json();

@@ -81,8 +81,8 @@ ${Object.entries(perfumeRevenue)
 
     const fullSystemPrompt = `${SYSTEM_PROMPT}\n\nFINANCIAL DATA:\n${financialData}`;
 
-    // If user provided an API key, use their preferred provider
-    if (apiKey) {
+    // If user provided an API key (and not using free provider), use their preferred provider
+    if (apiKey && provider !== "free") {
       try {
         const aiResponse = await callAIProvider(provider, apiKey, modelName, customEndpoint, fullSystemPrompt, [], "Please analyze our financial data and give detailed insights for #AS KHUSHBOO.");
         return NextResponse.json({ insights: aiResponse });

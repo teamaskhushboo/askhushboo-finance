@@ -32,8 +32,8 @@ export default function Home() {
   const [settings, setSettings] = useState<AppSettings>({
     id: "main",
     aiApiKey: "",
-    aiProvider: "gemini",
-    aiModelName: "gemini-2.0-flash",
+    aiProvider: "free",
+    aiModelName: "z-ai-built-in",
     aiCustomEndpoint: "",
     updatedAt: null,
   });

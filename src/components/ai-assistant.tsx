@@ -45,7 +45,9 @@ export default function AIAssistant({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const isConfigured = !!(settings.aiApiKey && settings.aiApiKey.length > 0);
+  const isConfigured =
+    settings.aiProvider === "free" ||
+    !!(settings.aiApiKey && settings.aiApiKey.length > 0);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -80,8 +82,8 @@ export default function AIAssistant({
             content: m.content,
           })),
           apiKey: settings.aiApiKey || "",
-          provider: settings.aiProvider || "gemini",
-          modelName: settings.aiModelName || "gemini-2.0-flash",
+          provider: settings.aiProvider || "free",
+          modelName: settings.aiModelName || "z-ai-built-in",
           customEndpoint: settings.aiCustomEndpoint || "",
         }),
       });
@@ -92,14 +94,27 @@ export default function AIAssistant({
 
       const data = await response.json();
 
+      // Compose final content - prepend warning if AI fell back
+      let finalContent = data.response || "Sorry, I could not process that.";
+      if (data.warning) {
+        finalContent = `${data.warning}\n\n${finalContent}`;
+      }
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.response || "Sorry, I could not process that.",
+        content: finalContent,
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Show toast notification for fallback usage
+      if (data.usedFallback && data.source === "fallback") {
+        // Soft warning - fallback worked but Gemini key has issues
+      } else if (data.usedFallback && data.source === "static") {
+        // Hard warning - both failed
+      }
     } catch {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -137,12 +152,18 @@ export default function AIAssistant({
                 Setup AI Assistant
               </h3>
               <p className="text-muted-foreground text-sm max-w-md">
-                To use the AI assistant, configure your API key in the settings panel above. 
-                You can use Google Gemini (free), OpenAI, or a custom endpoint. 
-                Without a key, basic responses will be generated from your data.
+                To use the AI assistant, configure your AI provider in the settings panel above.
+                Easiest option: select <span className="text-gold">Free AI (No Key Needed)</span> - no API key, unlimited messages, just click Save Settings.
+                Or use Google Gemini (free tier), OpenAI, or a custom endpoint.
               </p>
               <div className="flex flex-col items-start gap-2 text-left mt-2">
-                <p className="text-gold text-xs font-semibold">Quick Setup:</p>
+                <p className="text-gold text-xs font-semibold">Quick Setup (Easiest):</p>
+                <ol className="text-muted-foreground text-xs space-y-1 list-decimal list-inside">
+                  <li>Click "AI Settings" panel above</li>
+                  <li>Select "Free AI (No Key Needed)"</li>
+                  <li>Click "Save Settings" - done!</li>
+                </ol>
+                <p className="text-gold text-xs font-semibold mt-3">Or use Gemini (Free Tier):</p>
                 <ol className="text-muted-foreground text-xs space-y-1 list-decimal list-inside">
                   <li>Get a free API key from{" "}
                     <a
@@ -154,9 +175,8 @@ export default function AIAssistant({
                       Google AI Studio
                     </a>
                   </li>
-                  <li>Click the AI Settings panel above</li>
-                  <li>Paste your key, select &quot;Google Gemini&quot;</li>
-                  <li>Click &quot;Test Connection&quot; then &quot;Save Settings&quot;</li>
+                  <li>Select "Google Gemini" provider, paste your key</li>
+                  <li>Click "Test Connection" then "Save Settings"</li>
                 </ol>
               </div>
             </div>
