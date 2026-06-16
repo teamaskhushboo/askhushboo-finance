@@ -82,8 +82,8 @@ export default function AIAssistant({
             content: m.content,
           })),
           apiKey: settings.aiApiKey || "",
-          provider: settings.aiProvider || "free",
-          modelName: settings.aiModelName || "z-ai-built-in",
+          provider: settings.aiProvider || "groq",
+          modelName: settings.aiModelName || "llama-3.3-70b-versatile",
           customEndpoint: settings.aiCustomEndpoint || "",
         }),
       });
@@ -152,32 +152,32 @@ export default function AIAssistant({
                 Setup AI Assistant
               </h3>
               <p className="text-muted-foreground text-sm max-w-md">
-                To use the AI assistant, configure your AI provider in the settings panel above.
-                Easiest option: select <span className="text-gold">Free AI (No Key Needed)</span> - no API key, unlimited messages, just click Save Settings.
-                Or use Google Gemini (free tier), OpenAI, or a custom endpoint.
+                AI Assistant use karne ke liye, AI Settings panel mein apni AI provider configure karein.
+                Recommended: <span className="text-gold">Groq (Best Free Tier)</span> - free, fast, generous quota, production-ready.
               </p>
               <div className="flex flex-col items-start gap-2 text-left mt-2">
-                <p className="text-gold text-xs font-semibold">Quick Setup (Easiest):</p>
+                <p className="text-gold text-xs font-semibold">Quick Setup (Recommended - Groq):</p>
                 <ol className="text-muted-foreground text-xs space-y-1 list-decimal list-inside">
-                  <li>Click "AI Settings" panel above</li>
-                  <li>Select "Free AI (No Key Needed)"</li>
-                  <li>Click "Save Settings" - done!</li>
-                </ol>
-                <p className="text-gold text-xs font-semibold mt-3">Or use Gemini (Free Tier):</p>
-                <ol className="text-muted-foreground text-xs space-y-1 list-decimal list-inside">
-                  <li>Get a free API key from{" "}
+                  <li>Free API key banao at{" "}
                     <a
-                      href="https://aistudio.google.com/apikey"
+                      href="https://console.groq.com/keys"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-gold hover:text-gold-light underline"
                     >
-                      Google AI Studio
+                      console.groq.com/keys
                     </a>
                   </li>
-                  <li>Select "Google Gemini" provider, paste your key</li>
-                  <li>Click "Test Connection" then "Save Settings"</li>
+                  <li>AI Settings panel open karein (above)</li>
+                  <li>Select &quot;Groq (Best Free Tier)&quot;, paste your key</li>
+                  <li>Click &quot;Test Connection&quot; then &quot;Save Settings&quot;</li>
                 </ol>
+                <p className="text-gold text-xs font-semibold mt-3">Other options:</p>
+                <ul className="text-muted-foreground text-xs space-y-1 list-disc list-inside">
+                  <li>Google Gemini - free tier but daily limit (429 error)</li>
+                  <li>OpenAI - paid, high quality</li>
+                  <li>Custom Endpoint - any OpenAI-compatible API</li>
+                </ul>
               </div>
             </div>
           </CardContent>

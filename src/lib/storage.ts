@@ -90,8 +90,8 @@ export async function getSettings(): Promise<AppSettings> {
   return {
     id: SETTINGS_DOC,
     aiApiKey: "",
-    aiProvider: "free",
-    aiModelName: "z-ai-built-in",
+    aiProvider: "groq",
+    aiModelName: "llama-3.3-70b-versatile",
     aiCustomEndpoint: "",
     updatedAt: null,
   };

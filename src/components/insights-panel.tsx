@@ -195,8 +195,8 @@ export default function InsightsPanel({
           expenses,
           revenue,
           apiKey: settings.aiApiKey || "",
-          provider: settings.aiProvider || "free",
-          modelName: settings.aiModelName || "z-ai-built-in",
+          provider: settings.aiProvider || "groq",
+          modelName: settings.aiModelName || "llama-3.3-70b-versatile",
           customEndpoint: settings.aiCustomEndpoint || "",
         }),
       });

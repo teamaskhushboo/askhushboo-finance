@@ -175,10 +175,12 @@ async function callAIProvider(
     return text;
   }
 
-  if (provider === "openai" || provider === "custom") {
+  if (provider === "openai" || provider === "custom" || provider === "groq") {
     const baseUrl = provider === "openai"
       ? "https://api.openai.com/v1/chat/completions"
-      : customEndpoint;
+      : provider === "groq"
+        ? "https://api.groq.com/openai/v1/chat/completions"
+        : customEndpoint;
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -204,12 +206,12 @@ async function callAIProvider(
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OpenAI API error: ${errText}`);
+      throw new Error(`${provider} API error: ${response.status} - ${errText}`);
     }
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
-    if (!text) throw new Error("No response from OpenAI");
+    if (!text) throw new Error(`No response from ${provider}`);
     return text;
   }
 

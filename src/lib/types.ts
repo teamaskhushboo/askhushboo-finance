@@ -22,7 +22,7 @@ export interface Revenue {
 export interface AppSettings {
   id: string; // always "main"
   aiApiKey: string;
-  aiProvider: "free" | "gemini" | "openai" | "custom";
+  aiProvider: "free" | "gemini" | "openai" | "groq" | "custom";
   aiModelName: string;
   aiCustomEndpoint: string;
   updatedAt: unknown; // Firestore timestamp

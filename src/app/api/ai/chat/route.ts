@@ -164,15 +164,16 @@ ${revenue
         // Compose a helpful notice when we fell back from a failing provider
         let warning: string | undefined;
         if (providerError && apiKey) {
+          const providerLabel = provider === "gemini" ? "Gemini" : provider === "groq" ? "Groq" : provider === "openai" ? "OpenAI" : "Custom";
           if (providerErrorKind === "quota") {
             warning =
-              "⚠ Note: Aapki Gemini API key ka free quota khatam ho gaya hai, isliye abhi free AI (built-in fallback) use karke jawab de raha hoon. AI Settings mein jaakar 'Free AI (No Key Needed)' provider select karein taake future mein bhi yahi use ho. 💛";
+              `⚠ Note: Aapki ${providerLabel} API key ka free quota khatam ho gaya hai, isliye abhi free AI (built-in fallback) use karke jawab de raha hoon. AI Settings mein "Groq (Best Free Tier)" select karein taake future mein reliable AI mile. 💛`;
           } else if (providerErrorKind === "auth") {
             warning =
-              "⚠ Note: Aapki Gemini API key invalid hai, isliye free AI (built-in fallback) use ho raha hai. AI Settings mein key check karein.";
+              `⚠ Note: Aapki ${providerLabel} API key invalid hai, isliye free AI (built-in fallback) use ho raha hai. AI Settings mein key check karein ya Groq try karein (free, generous quota).`;
           } else {
             warning =
-              "⚠ Note: API provider mein issue tha, isliye free AI (built-in fallback) use ho raha hai. AI Settings check karein.";
+              `⚠ Note: ${providerLabel} API mein issue tha, isliye free AI (built-in fallback) use ho raha hai. AI Settings check karein.`;
           }
         }
 
@@ -193,9 +194,10 @@ ${revenue
       // STEP 3: Final hardcoded fallback - generate from data
       const fallbackText = generateFallbackResponse(message, expenses, revenue, totalExpenses, totalRevenue, categoryBreakdown);
 
-      let warning = "⚠ AI providers abhi available nahi hain, isliye basic data-based answer de raha hoon. Thodi der baad try karein.";
+      let warning = "⚠ AI providers abhi available nahi hain, isliye basic data-based answer de raha hoon. AI Settings mein Groq configure karein (free, generous quota).";
       if (providerError && providerErrorKind === "quota") {
-        warning = "⚠ Aapki Gemini API key ka quota khatam hai aur backup AI bhi fail hua. Thodi der baad try karein, ya AI Settings mein 'Free AI (No Key Needed)' select karein.";
+        const providerLabel = provider === "gemini" ? "Gemini" : provider === "groq" ? "Groq" : provider === "openai" ? "OpenAI" : "Custom";
+        warning = `⚠ Aapki ${providerLabel} API key ka quota khatam hai aur backup AI bhi fail hua. AI Settings mein "Groq (Best Free Tier)" select karein - free aur reliable.`;
       }
 
       return NextResponse.json({
@@ -260,10 +262,12 @@ async function callAIProvider(
     return text;
   }
 
-  if (provider === "openai" || provider === "custom") {
+  if (provider === "openai" || provider === "custom" || provider === "groq") {
     const baseUrl = provider === "openai"
       ? "https://api.openai.com/v1/chat/completions"
-      : customEndpoint;
+      : provider === "groq"
+        ? "https://api.groq.com/openai/v1/chat/completions"
+        : customEndpoint;
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -289,12 +293,12 @@ async function callAIProvider(
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OpenAI API error: ${response.status} - ${errText}`);
+      throw new Error(`${provider} API error: ${response.status} - ${errText}`);
     }
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
-    if (!text) throw new Error("No response from OpenAI");
+    if (!text) throw new Error(`No response from ${provider}`);
     return text;
   }
 

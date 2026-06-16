@@ -41,15 +41,15 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
 
   // Local form state
   const [apiKey, setApiKey] = useState(settings.aiApiKey || "");
-  const [provider, setProvider] = useState<string>(settings.aiProvider || "free");
-  const [modelName, setModelName] = useState(settings.aiModelName || "z-ai-built-in");
+  const [provider, setProvider] = useState<string>(settings.aiProvider || "groq");
+  const [modelName, setModelName] = useState(settings.aiModelName || "llama-3.3-70b-versatile");
   const [customEndpoint, setCustomEndpoint] = useState(settings.aiCustomEndpoint || "");
 
   // Sync with parent settings
   useEffect(() => {
     setApiKey(settings.aiApiKey || "");
-    setProvider(settings.aiProvider || "free");
-    setModelName(settings.aiModelName || "z-ai-built-in");
+    setProvider(settings.aiProvider || "groq");
+    setModelName(settings.aiModelName || "llama-3.3-70b-versatile");
     setCustomEndpoint(settings.aiCustomEndpoint || "");
   }, [settings]);
 
@@ -136,6 +136,8 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
       setModelName("gemini-2.0-flash");
     } else if (value === "openai") {
       setModelName("gpt-4o-mini");
+    } else if (value === "groq") {
+      setModelName("llama-3.3-70b-versatile");
     } else if (value === "free") {
       // Free AI - uses built-in z-ai-web-dev-sdk, no key needed
       setApiKey("");
@@ -197,6 +199,9 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
                     <SelectItem value="free" className="text-white focus:text-white focus:bg-gold/10">
                       Free AI (No Key Needed) 💛
                     </SelectItem>
+                    <SelectItem value="groq" className="text-white focus:text-white focus:bg-gold/10">
+                      Groq (Best Free Tier)
+                    </SelectItem>
                     <SelectItem value="gemini" className="text-white focus:text-white focus:bg-gold/10">
                       Google Gemini
                     </SelectItem>
@@ -212,7 +217,17 @@ export default function AISettings({ settings, onSettingsChange }: AISettingsPro
                   <div className="flex items-start gap-2 p-3 rounded-lg text-xs bg-gold/10 border border-gold/30">
                     <Zap size={14} className="text-gold mt-0.5 flex-shrink-0" />
                     <span className="text-gold">
-                      Free AI use ho raha hai. Koi API key zaroori nahi, unlimited messages, built-in backup. Save Settings click karein.
+                      Free AI use ho raha hai (built-in SDK). Production (Vercel) par yeh work nahi karta - development environment only. Production ke liye Groq (free, generous quota) recommend karte hain.
+                    </span>
+                  </div>
+                )}
+                {provider === "groq" && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg text-xs bg-gold/10 border border-gold/30">
+                    <Zap size={14} className="text-gold mt-0.5 flex-shrink-0" />
+                    <span className="text-gold">
+                      Groq best free option hai production ke liye. Free key banao at{" "}
+                      <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="underline">console.groq.com/keys</a>
+                      , paste karein, Test karein. Llama 3.3 70B fast aur smart hai.
                     </span>
                   </div>
                 )}

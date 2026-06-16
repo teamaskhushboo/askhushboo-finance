@@ -149,10 +149,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (provider === "openai" || provider === "custom") {
+    if (provider === "openai" || provider === "custom" || provider === "groq") {
       const baseUrl = provider === "openai"
         ? "https://api.openai.com/v1/chat/completions"
-        : customEndpoint;
+        : provider === "groq"
+          ? "https://api.groq.com/openai/v1/chat/completions"
+          : customEndpoint;
 
       if (provider === "custom" && !customEndpoint) {
         return NextResponse.json({
@@ -176,15 +178,17 @@ export async function POST(req: NextRequest) {
 
       if (!response.ok) {
         const errText = await response.text();
-        const result = parseOpenAIError(response.status, errText, provider === "openai" ? "OpenAI" : "Custom");
+        const providerLabel = provider === "openai" ? "OpenAI" : provider === "groq" ? "Groq" : "Custom";
+        const result = parseOpenAIError(response.status, errText, providerLabel);
         return NextResponse.json(result);
       }
 
       const data = await response.json();
       if (data.choices && data.choices.length > 0) {
+        const providerLabel = provider === "openai" ? "OpenAI" : provider === "groq" ? "Groq" : "Custom";
         return NextResponse.json({
           success: true,
-          message: `${provider === "openai" ? "OpenAI" : "Custom"} API key is working! Connection successful. 💛`,
+          message: `${providerLabel} API key is working! Connection successful. 💛`,
         });
       }
 

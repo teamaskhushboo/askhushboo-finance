@@ -32,8 +32,8 @@ export default function Home() {
   const [settings, setSettings] = useState<AppSettings>({
     id: "main",
     aiApiKey: "",
-    aiProvider: "free",
-    aiModelName: "z-ai-built-in",
+    aiProvider: "groq",
+    aiModelName: "llama-3.3-70b-versatile",
     aiCustomEndpoint: "",
     updatedAt: null,
   });
